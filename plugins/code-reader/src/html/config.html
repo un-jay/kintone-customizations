@@ -1,0 +1,101 @@
+<!--
+======================================================================
+ Version    作成日(更新日)    更新者          :更新内容
+ V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+ V1.1.0     2026/08/17        J.Yamamoto      :複数フィールドへの分割書き込みに対応
+----------------------------------------------------------------------
+     ModuleName  : 設定画面(config.html)
+     Description : QR/バーコードリーダープラグインの設定画面
+======================================================================
+-->
+<div class="kintoneplugin-body">
+    <div class="kintoneplugin-row">
+        <div class="kintoneplugin-label">読み取るコード種別</div>
+        <div class="kintoneplugin-desc">
+            有効にした種別ごとに、レコード追加・編集画面へスキャンボタンが表示されます。
+        </div>
+        <label class="code-reader-checkbox-label">
+            <input type="checkbox" id="enable-qr" />
+            QRコード（jsQR）
+        </label>
+        <label class="code-reader-checkbox-label">
+            <input type="checkbox" id="enable-barcode" />
+            CODE39バーコード（Quagga2）
+        </label>
+    </div>
+
+    <div class="kintoneplugin-row">
+        <div class="kintoneplugin-label">分割方法</div>
+        <div class="kintoneplugin-desc">
+            1つのコードに複数の値が含まれる場合の分割方法を選択してください。分割した値は、下の「書き込み先フィールド」に上から順に書き込まれます。
+        </div>
+        <div class="kintoneplugin-select-outer">
+            <div class="kintoneplugin-select">
+                <select id="split-mode">
+                    <option value="none">
+                        分割しない（1フィールドにそのまま書き込む）
+                    </option>
+                    <option value="delimiter">区切り文字で分割する</option>
+                    <option value="fixedLength">桁数（文字数）で分割する</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="kintoneplugin-row" id="delimiter-row">
+        <div class="kintoneplugin-title">区切り文字</div>
+        <div class="kintoneplugin-select-outer">
+            <div class="kintoneplugin-select">
+                <select id="delimiter-preset"></select>
+            </div>
+        </div>
+        <div class="kintoneplugin-input-outer" id="delimiter-custom-outer">
+            <input
+                type="text"
+                id="delimiter-custom"
+                class="kintoneplugin-input-text"
+                placeholder="任意の区切り文字を入力"
+            />
+        </div>
+    </div>
+
+    <div class="kintoneplugin-row">
+        <div class="kintoneplugin-label">
+            書き込み先フィールド <span class="kintoneplugin-require">必須</span>
+        </div>
+        <div class="kintoneplugin-desc">
+            読み取った値の書き込み先となる文字列（1行）フィールドのフィールドコードを、書き込む順番に指定してください。「桁数で分割する」を選んだ場合は、各フィールドの桁数（文字数）も指定してください（未入力・0の場合は残り全部をそのフィールドへ書き込みます）。
+        </div>
+        <table class="kintoneplugin-table">
+            <thead>
+                <tr>
+                    <th class="kintoneplugin-table-th">
+                        <span class="title">フィールドコード</span>
+                    </th>
+                    <th class="kintoneplugin-table-th" id="length-column-header">
+                        <span class="title">桁数（桁数で分割する場合のみ）</span>
+                    </th>
+                    <th class="kintoneplugin-table-th-blankspace"></th>
+                </tr>
+            </thead>
+            <tbody id="target-fields-tbody"></tbody>
+        </table>
+        <button type="button" id="add-field-button" class="kintoneplugin-button-normal">
+            + フィールドを追加
+        </button>
+        <div class="code-reader-error" id="error-message"></div>
+    </div>
+
+    <div class="kintoneplugin-row">
+        <button type="button" id="save-button" class="kintoneplugin-button-dialog-ok">
+            保存する
+        </button>
+        <button
+            type="button"
+            id="cancel-button"
+            class="kintoneplugin-button-dialog-cancel"
+        >
+            キャンセル
+        </button>
+    </div>
+</div>

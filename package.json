@@ -1,0 +1,22 @@
+{
+    "name": "kintone-customizations",
+    "version": "1.0.0",
+    "private": true,
+    "description": "kintone JavaScript customizations and plugins portfolio",
+    "license": "MIT",
+    "author": "J.Yamamoto",
+    "workspaces": [
+        "plugins/*"
+    ],
+    "scripts": {
+        "lint": "eslint . --ext .js",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "devDependencies": {
+        "eslint": "^9.9.0",
+        "eslint-config-prettier": "^9.1.0",
+        "globals": "^15.9.0",
+        "prettier": "^3.3.3"
+    }
+}

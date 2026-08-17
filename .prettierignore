@@ -1,0 +1,10 @@
+# Third-party files kept as-is (original license/formatting preserved)
+**/css/51-modern-default.css
+
+# Build artifacts / dependencies
+**/dist/
+**/node_modules/
+**/*.zip
+
+# Claude Code local session settings (not part of the portfolio)
+.claude/

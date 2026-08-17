@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+*.zip
+
+# kintone plugin signing keys (generated on first `plugin pack`, must never be committed)
+*.ppk
+
+# Google Apps Script (clasp) - contains a real script ID, keep local only
+.clasp.json
+.clasprc.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env / secrets
+.env
+.env.*

@@ -1,0 +1,46 @@
+{
+    "manifest_version": 1,
+    "version": "1.1.0",
+    "type": "APP",
+    "name": {
+        "ja": "QR/バーコードリーダー",
+        "en": "QR/Barcode Reader"
+    },
+    "description": {
+        "ja": "カメラでQRコード・CODE39バーコードを読み取り、指定したフィールドへ書き込みます。",
+        "en": "Scans QR codes and CODE39 barcodes with the device camera and writes the result into a configured field."
+    },
+    "icon": "image/icon.png",
+    "desktop": {
+        "js": [
+            "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+            "https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js",
+            "js/constant.js",
+            "js/calc.js",
+            "js/ui/reader-base.js",
+            "js/ui/qr-reader.js",
+            "js/ui/barcode-reader.js",
+            "js/desktop.js"
+        ],
+        "css": ["css/51-modern-default.css", "css/common.css", "css/desktop.css"]
+    },
+    "mobile": {
+        "js": [
+            "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+            "https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js",
+            "js/constant.js",
+            "js/calc.js",
+            "js/ui/reader-base.js",
+            "js/ui/qr-reader.js",
+            "js/ui/barcode-reader.js",
+            "js/desktop.js"
+        ],
+        "css": ["css/common.css", "css/desktop.css"]
+    },
+    "config": {
+        "html": "html/config.html",
+        "js": ["js/constant.js", "js/calc.js", "js/config.js"],
+        "css": ["css/51-modern-default.css", "css/common.css", "css/config.css"],
+        "required_params": []
+    }
+}

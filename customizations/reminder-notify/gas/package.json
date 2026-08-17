@@ -1,0 +1,16 @@
+{
+    "name": "@kintone-customizations/reminder-notify-gas",
+    "version": "1.0.0",
+    "private": true,
+    "description": "reminder-notifyプラグインのGAS側(定期チェック・メール送信)",
+    "license": "MIT",
+    "author": "J.Yamamoto",
+    "scripts": {
+        "login": "clasp login",
+        "push": "clasp push",
+        "open": "clasp open"
+    },
+    "devDependencies": {
+        "@google/clasp": "^2.4.2"
+    }
+}

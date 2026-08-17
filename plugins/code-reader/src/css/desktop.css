@@ -1,0 +1,58 @@
+/*
+======================================================================
+ Version    作成日(更新日)    更新者          :更新内容
+ V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+----------------------------------------------------------------------
+     ModuleName  : レコード画面スタイル(desktop.css)
+     Description : スキャンボタン・カメラ映像のスタイル定義
+                   確認ダイアログはkintone API(createDialog/createBottomSheet)を
+                   使用するため、モーダル用のCSSは不要。
+======================================================================
+*/
+
+/* カメラ映像を表示するvideo要素 */
+.code-reader-video-frame {
+    max-width: 85%;
+    margin: 30px 5% 5% 5%;
+    border: 2px solid #333;
+}
+
+/* レコード画面のスキャンボタン */
+.code-reader-app-btn {
+    margin-right: 10px;
+    padding: 0 16px;
+    min-width: 163px;
+    height: 48px;
+    border: 1px solid #e3e7e8;
+    border-radius: initial;
+    background-color: #f7f9fa;
+    box-shadow: 1px 1px 1px #fff inset;
+    color: #3498db;
+    text-align: center;
+    line-height: 48px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: normal;
+}
+
+.code-reader-app-btn:hover {
+    background-color: rgba(200, 215, 220);
+    box-shadow: none;
+}
+
+@media screen and (max-width: 600px) {
+    .code-reader-app-btn {
+        margin: 5px;
+        padding: 6px 8px;
+        min-width: 100px;
+        height: auto;
+        border: solid 2px #206694;
+        border-radius: 6px;
+        background-color: #fff;
+        box-shadow: none;
+        color: #206694;
+        line-height: 1;
+        font-size: 1.4rem;
+        font-weight: bold;
+    }
+}

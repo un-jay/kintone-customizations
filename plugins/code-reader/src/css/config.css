@@ -1,0 +1,39 @@
+/*
+======================================================================
+ Version    作成日(更新日)    更新者          :更新内容
+ V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+ V1.1.0     2026/08/17        J.Yamamoto      :複数フィールドへの分割書き込みに対応
+----------------------------------------------------------------------
+     ModuleName  : 設定画面スタイル(config.css)
+     Description : プラグイン設定画面固有のスタイル定義
+======================================================================
+*/
+
+.code-reader-checkbox-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.code-reader-error {
+    margin-top: 8px;
+    color: #e74c3c;
+    font-size: 13px;
+}
+
+#target-fields-tbody .kintoneplugin-input-outer {
+    width: 100%;
+}
+
+.code-reader-length-input {
+    width: 100px !important;
+}
+
+#delimiter-row .kintoneplugin-select-outer,
+#delimiter-row .kintoneplugin-input-outer {
+    margin-right: 8px;
+}
+
+#add-field-button {
+    margin-top: 8px;
+}
