@@ -65,26 +65,28 @@ DOM操作を伴う一体のUIコンポーネント（カメラ制御・ダイア
 
 ## カスタマイズ（プラグイン化しないもの）のフォルダ構成
 
-特定アプリのフィールドコードに依存し、設定画面を持たない単発カスタマイズは `customizations/<customization-name>/` に以下の構成で配置する。`manifest.json`・`config.js` は持たず、`src/` 配下のJS/CSSファイルを対象アプリのJavaScript/CSSカスタマイズとして直接アップロードする。責務分離のため複数ファイルに分ける場合も、`src/` 直下にファイルを並べる（`js/`等のサブディレクトリは作らない）。
+特定アプリのフィールドコードに依存し、設定画面を持たない単発カスタマイズは `customizations/<customization-name>/` に以下の構成で配置する。`manifest.json`・`config.js` は持たない。
 
 ```
 customizations/<customization-name>/
 ├── CLAUDE.md
 ├── README.md
 └── src
-    ├── constant.js      # (必要な場合)
-    ├── calc.js          # (必要な場合)
-    ├── api.js           # (必要な場合)
-    ├── ui.js            # (必要な場合)
     ├── desktop.js
     └── css/
         ├── 51-modern-default.css  # (必要な場合、第三者ファイル)
         └── desktop.css
 ```
 
+プラグインと異なり `@kintone/cli` によるパッケージングが無く、「JavaScript / CSSでカスタマイズ」画面から**手作業で1ファイルずつアップロードする**運用になる。ファイルを分けるほどアップロードの手間・順序ミスのリスクが増えるため、`constant.js`/`calc.js`/`api.js`/`ui.js` のような責務ごとのファイル分割はせず、`desktop.js` 1ファイルに責務ごとのセクションコメント（`// ==========================` 区切り）でまとめる。CSSも同様に、第三者ファイル（51-modern-default.css等）以外は `desktop.css` 1ファイルにまとめる。
+
 特定のプラグインの使い方を示すサンプルカスタマイズも、同じ構成で `plugins/<plugin-name>/examples/<sample-name>/` に配置する（`CLAUDE.md`にそのプラグインへの依存関係を明記する）。
 
+**kintoneはJS/CSSカスタマイズをプラグインより先に読み込む**（プラグインは後）。そのため、カスタマイズがプラグインの公開する名前空間（`window.<Namespace>`）に依存する場合、ファイルのトップレベルで一度だけ変数へキャプチャしてはいけない（その時点ではまだ`undefined`で、後からプラグインが読み込まれても反映されない）。`kintone.events.on()`のイベントハンドラー内（＝実際に発火するタイミングで、全スクリプト読み込み後）で、その都度`window.<Namespace>`を読み直すこと。
+
 # 各ファイルの責務
+
+以下はプラグイン（`@kintone/cli`で自動パッケージングするため、ファイルを分けてもデプロイの手間が増えない）における責務分担。
 
 - **desktop.js**: イベント制御のみ（イベント登録→設定取得→api.js→calc.js→ui.js）。API処理・DOM操作・計算処理は禁止
 - **api.js**: REST APIのみ。DOM操作・計算処理は禁止
@@ -95,6 +97,8 @@ customizations/<customization-name>/
 - **config.js**: プラグイン設定画面
 
 すべてのファイルが必須というわけではない。機能上不要なファイル（例: REST APIを呼ばないプラグインの `api.js`）は作成しなくてよい。
+
+カスタマイズ（手作業アップロード）では、上記の責務分担を `desktop.js` 1ファイル内のセクションコメントとして表現する（責務の考え方自体は変えない。ファイルを物理的に分けないだけ）。
 
 # コーディング規約
 

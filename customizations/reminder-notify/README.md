@@ -14,15 +14,17 @@
 - 実際の送信はGAS側が担当するため、kintone側はメール送信のためのAPIリクエストを消費しない
 - 送信先テーブルの「送信区分」でTO/CC/BCCを振り分け
 
-フィールドコードは`src/constant.js`（kintone側）・`gas/src/Config.js`（GAS側）の両方に固定値として定義している。設定画面は持たないため、**対象アプリを[CLAUDE.md](./CLAUDE.md)記載のフィールドコードで作成すること**が前提となる。複数アプリで使い回したい場合はフィールドコードをアプリ側で合わせるか、`constant.js`の値を書き換えて使う。
+フィールドコードは`src/desktop.js`（kintone側）・`gas/src/Config.js`（GAS側）の両方に固定値として定義している。設定画面は持たないため、**対象アプリを[CLAUDE.md](./CLAUDE.md)記載のフィールドコードで作成すること**が前提となる。複数アプリで使い回したい場合はフィールドコードをアプリ側で合わせるか、`desktop.js`内の`FIELD`定数を書き換えて使う。
+
+kintone側は`manifest.json`によるパッケージングを持たないプレーンなJS/CSSカスタマイズのため、「JavaScript / CSSでカスタマイズ」画面でのアップロードは手作業になる。ファイル数が増えるほどアップロードの手間・順序ミスのリスクが増えるため、`src/desktop.js`1ファイルに責務ごとのセクションコメントで区切って実装している（プラグインの`src/js/`のようなファイル分割はしない）。
 
 ## セットアップ
 
 ### 1. kintone側
 
-「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下をPC用ファイルとしてアップロードしてください（読み込み順を維持すること）。
+「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下をPC用ファイルとしてアップロードしてください。
 
-- JavaScript: `src/constant.js` → `src/calc.js` → `src/api.js` → `src/ui.js` → `src/desktop.js`
+- JavaScript: `src/desktop.js`
 - CSS: `src/css/51-modern-default.css` → `src/css/desktop.css`
 
 対象アプリには、[CLAUDE.md](./CLAUDE.md) に記載のフィールドコードで、以下のフィールドを用意してください。
