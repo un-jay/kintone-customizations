@@ -2,6 +2,9 @@
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
 //  V1.1.0     2026/08/17        J.Yamamoto      :複数フィールドへの分割書き込みに対応
+//  V1.2.0     2026/08/18        J.Yamamoto      :複数バーコード規格・カメラ前面/背面選択に対応
+//  V1.3.0     2026/08/19        J.Yamamoto      :書き込み先がルックアップフィールドの場合、
+//                                                自動取得(lookup:true)されるように対応
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : レコード追加・編集画面にスキャンボタンを表示し、
@@ -28,6 +31,8 @@
      * @returns {{
      *   enableQr: boolean,
      *   enableBarcode: boolean,
+     *   barcodeFormats: string[],
+     *   cameraFacing: string,
      *   splitMode: string,
      *   delimiter: string,
      *   targetFields: Array<{fieldCode: string, length: number|null}>,
@@ -42,6 +47,8 @@
             enableQr: (config[KEYS.ENABLE_QR] || DEFAULTS.ENABLE_QR) === 'true',
             enableBarcode:
                 (config[KEYS.ENABLE_BARCODE] || DEFAULTS.ENABLE_BARCODE) === 'true',
+            barcodeFormats: CONST.parseBarcodeFormats(config[KEYS.BARCODE_FORMATS]),
+            cameraFacing: config[KEYS.CAMERA_FACING] || CONST.CAMERA.DEFAULT_FACING_MODE,
             splitMode: config[KEYS.SPLIT_MODE] || CONST.SPLIT_MODE.NONE,
             delimiter: config[KEYS.DELIMITER] || '',
             targetFields: CONST.parseTargetFields(config[KEYS.TARGET_FIELDS]),
@@ -75,6 +82,11 @@
                 return;
             }
             record[fieldCode].value = value;
+            // ルックアップフィールドの場合、値と同時にlookup:trueを指定すると
+            // kintone.app.record.set()が参照先アプリからの自動取得を行う。
+            // ルックアップでないフィールドに指定しても無視されるだけなので、
+            // フィールド種別を判定せず一律で指定する。
+            record[fieldCode].lookup = true;
             hasChange = true;
         });
 
@@ -102,17 +114,27 @@
 
         const readers = [];
         if (config.enableQr) {
-            readers.push({ ReaderClass: CONST.QRReader, label: CONST.UI.SCAN_QR_BUTTON });
+            readers.push({
+                ReaderClass: CONST.QRReader,
+                label: CONST.UI.SCAN_QR_BUTTON,
+                extraParams: {},
+            });
         }
         if (config.enableBarcode) {
             readers.push({
                 ReaderClass: CONST.BarcodeReader,
                 label: CONST.UI.SCAN_BARCODE_BUTTON,
+                extraParams: { formats: config.barcodeFormats },
             });
         }
 
-        readers.forEach(({ ReaderClass, label }) => {
-            const reader = new ReaderClass({ headerElm, isMobile });
+        readers.forEach(({ ReaderClass, label, extraParams }) => {
+            const reader = new ReaderClass({
+                headerElm,
+                isMobile,
+                facingMode: config.cameraFacing,
+                ...extraParams,
+            });
             const button = reader.createButton(label, CONST.CLASS_NAMES.APP_BTN);
             button.style.marginRight = '8px';
 
