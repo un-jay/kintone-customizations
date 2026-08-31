@@ -1,6 +1,10 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/01        J.Yamamoto      :renderTemplate/extractRecipientsByTypeを
+//                                                Vitestからテストできるよう、GAS実行時には
+//                                                影響しないCommonJS export
+//                                                (module存在チェック付き)を末尾に追加
 // ----------------------------------------------------------------------
 //     ModuleName  : メール送信処理(Mailer.js)
 //     Description : MailAppによるメール送信と、件名/本文のプレースホルダ置換を行う。
@@ -80,4 +84,10 @@ function sendReminderMail(config, record) {
         subject,
         body,
     });
+}
+
+// Vitestからのテスト用に、副作用を持たない関数のみをCommonJS export経由で公開する。
+// GAS実行時はmoduleが存在しないため、このブロックは実行されない。
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { renderTemplate, extractRecipientsByType };
 }

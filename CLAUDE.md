@@ -100,6 +100,13 @@ customizations/<customization-name>/
 
 カスタマイズ（手作業アップロード）では、上記の責務分担を `desktop.js` 1ファイル内のセクションコメントとして表現する（責務の考え方自体は変えない。ファイルを物理的に分けないだけ）。
 
+## calc.js のテスト
+
+`calc.js`（またはカスタマイズの `desktop.js` 内「計算処理」セクション、GAS側の副作用を持たない関数）はDOM操作・API呼び出し・副作用を持たない純粋関数のみを置く方針のため、[Vitest](https://vitest.dev/)によるユニットテストを書く。各プラグイン・カスタマイズ直下の `test/` ディレクトリに `<対象ファイル名>.test.js` として配置し（`src/` の外に置き、`@kintone/cli` のパッケージング対象にもGAS/JS・CSSカスタマイズのアップロード対象にも含めない）、`kintone.plugin.app.getConfig` 等が読み込む定数（`constant.js`）は実ファイルをそのままimportして使う（テスト側で値を重複定義しない）。ルートの `npm run test` でリポジトリ全体のテストを実行する（CIでも実行）。
+
+- **プラグイン（`js/calc.js`が独立ファイル）**: `window.<Namespace>`に公開済みの関数をそのままテストで呼べる。テスト側では対象プラグインの`constant.js`→`calc.js`の順でimportする（`manifest.json`の読み込み順と合わせる）
+- **単一ファイルのカスタマイズ（`desktop.js`にIIFEで閉じている）・GASのファイル（`export`/`import`構文が使えない実行環境）**: テストしたい純粋関数をファイル末尾で`if (typeof module !== 'undefined' && module.exports) { module.exports = {...}; }`のガード付きでCommonJS exportする。kintoneのブラウザ実行時・GAS実行時は`module`が存在しないためこのブロックは実行されず、挙動に影響しない。カスタマイズの`desktop.js`はイベント登録（`kintone.events.on(...)`等）をトップレベルで呼ぶため、テスト側でimportする前に`globalThis.kintone`へ最低限のダミー（`{ events: { on: () => {} } }`等）を用意しておく
+
 # コーディング規約
 
 - ES6で実装 / const・let を使用 / async・await を使用（Promiseチェーン禁止）/ var禁止

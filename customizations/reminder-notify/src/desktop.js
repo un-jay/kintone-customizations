@@ -15,6 +15,9 @@
 //  V1.5.0     2026/08/25        J.Yamamoto      :確認ダイアログのOKボタン文言が長く、
 //                                                kintone標準ダイアログのボタン幅に収まらず
 //                                                末尾が見切れていたため短縮
+//  V1.6.0     2026/09/01        J.Yamamoto      :計算処理の純粋関数をVitestからテストできるよう、
+//                                                ブラウザ実行時には影響しないCommonJS export
+//                                                (module存在チェック付き)を末尾に追加
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -443,4 +446,17 @@
 
         return event;
     });
+
+    // Vitestからのテスト用に、計算処理の純粋関数とエラーメッセージ定数を
+    // CommonJS export経由で公開する。kintone(ブラウザ)実行時はmoduleが
+    // 存在しないため、このブロックは実行されない。
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            calculateScheduledDateTime,
+            validateRecipients,
+            extractRecipientCodes,
+            buildRecipientDisplayNames,
+            MSGS,
+        };
+    }
 })();

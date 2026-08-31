@@ -22,6 +22,9 @@
 //                                                JSONボディを送るのでContent-Typeを付与する。
 //  V1.6.0     2026/08/31        J.Yamamoto      :動作確認が取れたため、CB_IL02切り分け用の
 //                                                デバッグログ(送信クエリのLogger.log)を削除
+//  V1.7.0     2026/09/01        J.Yamamoto      :buildBaseUrlをVitestからテストできるよう、
+//                                                GAS実行時には影響しないCommonJS export
+//                                                (module存在チェック付き)を末尾に追加
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -138,4 +141,10 @@ function updateRecord(config, recordId, revision, fieldValues) {
             `レコード更新に失敗しました(id=${recordId}): ${response.getContentText()}`,
         );
     }
+}
+
+// Vitestからのテスト用に、副作用を持たないbuildBaseUrlのみをCommonJS export経由で
+// 公開する。GAS実行時はmoduleが存在しないため、このブロックは実行されない。
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { buildBaseUrl };
 }

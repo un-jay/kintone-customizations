@@ -66,5 +66,19 @@ export default [
         },
         rules: baseRules,
     },
+    {
+        // Vitestによるユニットテスト（Node上でESM importを使用）
+        files: ['**/test/**/*.test.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            globals: {
+                ...globals.node,
+                ...globals.browser,
+                ...kintoneGlobals,
+            },
+        },
+        rules: baseRules,
+    },
     eslintConfigPrettier,
 ];

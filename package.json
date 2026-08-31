@@ -11,12 +11,15 @@
     "scripts": {
         "lint": "eslint . --ext .js",
         "format": "prettier --write .",
-        "format:check": "prettier --check ."
+        "format:check": "prettier --check .",
+        "test": "vitest run"
     },
     "devDependencies": {
         "eslint": "^9.9.0",
         "eslint-config-prettier": "^9.1.0",
         "globals": "^15.9.0",
-        "prettier": "^3.3.3"
+        "jsdom": "^29.1.1",
+        "prettier": "^3.3.3",
+        "vitest": "^4.1.11"
     }
 }
