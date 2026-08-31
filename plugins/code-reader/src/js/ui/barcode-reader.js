@@ -1,10 +1,12 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/08/18        J.Yamamoto      :複数バーコード規格の同時読み取りに対応
 // ----------------------------------------------------------------------
 //     ModuleName  : バーコードリーダー(barcode-reader.js)
-//     Description : CODE39バーコード読み取りクラス
+//     Description : バーコード読み取りクラス
 //                   Quagga2で連続フレームを解析し、同一コードを規定回数検出した時点で確定する。
+//                   読み取り対象の規格(CODE39/CODE128/EAN等)は複数同時に指定できる。
 // ======================================================================
 
 ((global) => {
@@ -14,6 +16,16 @@
     const CodeReaderBase = CONST.CodeReaderBase;
 
     class BarcodeReader extends CodeReaderBase {
+        /**
+         * @param {Object}   params
+         * @param {string[]} [params.formats] - 読み取り対象のQuagga2リーダー種別の配列
+         */
+        constructor({ formats, ...baseParams }) {
+            super(baseParams);
+            this.formats =
+                formats && formats.length ? formats : CONST.BARCODE.DEFAULT_FORMATS;
+        }
+
         _getCameraTitle() {
             return CONST.UI.CAMERA_TITLE_BARCODE;
         }
@@ -53,10 +65,10 @@
                             name: 'Live',
                             type: 'LiveStream',
                             target: this.video,
-                            constraints: { facingMode: CONST.CAMERA.FACING_MODE },
+                            constraints: { facingMode: this.facingMode },
                         },
                         decoder: {
-                            readers: [CFG.READER_TYPE],
+                            readers: this.formats,
                             multiple: false,
                         },
                         locate: true,

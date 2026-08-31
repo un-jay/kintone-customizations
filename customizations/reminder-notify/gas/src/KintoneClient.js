@@ -1,6 +1,27 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/08/19        J.Yamamoto      :KINTONE_SUBDOMAINに誤って完全なドメイン
+//                                                (例: xxx.cybozu.com)を設定しても、
+//                                                .cybozu.comが二重に付かないようにした
+//  V1.2.0     2026/08/19        J.Yamamoto      :クエリ不正(CB_IL02)を修正。
+//                                                (1)送信ステータスがドロップダウン設定の場合、
+//                                                   =演算子は使えないためin演算子に変更
+//                                                (2)or条件全体を()で囲わずand $id > Xを
+//                                                   後置していたため、意図しない演算子優先順位に
+//                                                   なっていたのを明示的なグループ化で修正
+//  V1.3.0     2026/08/19        J.Yamamoto      :切り分け用に、実際に送信するクエリを
+//                                                実行ログへ出力するようにした(デバッグ用)
+//  V1.4.0     2026/08/19        J.Yamamoto      :かっこの3重ネストが原因のクエリ不正(CB_IL02)を
+//                                                修正。$id > Xの絞り込みをor分岐ごとに分配し、
+//                                                グループ化を1階層までに抑えた
+//  V1.5.0     2026/08/19        J.Yamamoto      :GET(records.json)にContent-Type: application/json
+//                                                を付けていたのが原因のCB_IL02を修正。
+//                                                GETはクエリ文字列でパラメーターを渡すため
+//                                                Content-Typeを付けない。PUT(record.json)のみ
+//                                                JSONボディを送るのでContent-Typeを付与する。
+//  V1.6.0     2026/08/31        J.Yamamoto      :動作確認が取れたため、CB_IL02切り分け用の
+//                                                デバッグログ(送信クエリのLogger.log)を削除
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -10,21 +31,28 @@
 'use strict';
 
 /**
+ * KINTONE_SUBDOMAINには「サブドメイン名のみ」（例: example）を想定しているが、
+ * 誤って完全なドメイン（例: example.cybozu.com）が設定された場合でも
+ * 動作するよう、末尾の".cybozu.com"は取り除いてから付与し直す。
  * @param {Object} config - loadConfig()の戻り値
  * @returns {string} kintoneのベースURL
  */
 function buildBaseUrl(config) {
-    return `https://${config.subdomain}.cybozu.com`;
+    const subdomain = config.subdomain.replace(/\.cybozu\.com\/?$/i, '');
+    return `https://${subdomain}.cybozu.com`;
 }
 
 /**
+ * 認証ヘッダーのみを返す(Content-Typeは含めない)。
+ * GET(records.json)はクエリ文字列でパラメーターを渡すため、Content-Type: application/json
+ * を付けると不正リクエスト(CB_IL02)になることがある。JSONボディを送るリクエスト
+ * (PUT等)では、呼び出し側で個別にContent-Typeを追加すること。
  * @param {Object} config
- * @returns {Object} 共通リクエストヘッダー
+ * @returns {Object} 認証ヘッダー
  */
-function buildHeaders(config) {
+function buildAuthHeader(config) {
     return {
         'X-Cybozu-API-Token': config.apiToken,
-        'Content-Type': 'application/json',
     };
 }
 
@@ -38,22 +66,26 @@ function buildHeaders(config) {
  */
 function fetchTargetRecords(config, nowIso) {
     const F = config.fields;
-    const query =
-        `(${F.SEND_STATUS} = "${STATUS.UNSENT}" and ${F.SCHEDULED_AT} <= "${nowIso}") ` +
-        `or ${F.SEND_REQUEST} in ("${SEND_REQUEST_VALUE}")`;
+    // SEND_STATUSは文字列(1行)・ドロップダウンどちらで作成されていても動くよう、
+    // (ドロップダウンは=/!=が使えずin/not inのみのため) in演算子で統一する。
+    // かっこの入れ子は1階層までとし($id > X の絞り込みを両方のor分岐にそれぞれ分配する)、
+    // 公式ドキュメントのグループ化例(a) or (b)と同じ深さに揃える。
 
     const records = [];
     let lastId = 0;
 
     for (;;) {
-        const seekQuery = `${query} and $id > ${lastId} order by $id asc limit ${RECORDS_PER_REQUEST}`;
+        const seekQuery =
+            `(${F.SEND_STATUS} in ("${STATUS.UNSENT}") and ${F.SCHEDULED_AT} <= "${nowIso}" and $id > ${lastId}) ` +
+            `or (${F.SEND_REQUEST} in ("${SEND_REQUEST_VALUE}") and $id > ${lastId}) ` +
+            `order by $id asc limit ${RECORDS_PER_REQUEST}`;
         const url =
             `${buildBaseUrl(config)}/k/v1/records.json` +
             `?app=${encodeURIComponent(config.appId)}&query=${encodeURIComponent(seekQuery)}`;
 
         const response = UrlFetchApp.fetch(url, {
             method: 'get',
-            headers: buildHeaders(config),
+            headers: buildAuthHeader(config),
             muteHttpExceptions: true,
         });
 
@@ -88,7 +120,10 @@ function updateRecord(config, recordId, revision, fieldValues) {
 
     const response = UrlFetchApp.fetch(`${buildBaseUrl(config)}/k/v1/record.json`, {
         method: 'put',
-        headers: buildHeaders(config),
+        headers: {
+            ...buildAuthHeader(config),
+            'Content-Type': 'application/json',
+        },
         muteHttpExceptions: true,
         payload: JSON.stringify({
             app: config.appId,

@@ -1,6 +1,9 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/08/18        J.Yamamoto      :カメラ前面/背面選択に対応
+//  V1.2.0     2026/08/19        J.Yamamoto      :kintone.showNotification()の引数を
+//                                                正しい(type, message)形式に修正
 // ----------------------------------------------------------------------
 //     ModuleName  : コードリーダー共通基底クラス(reader-base.js)
 //     Description : QR/バーコードリーダー共通の基底クラス
@@ -25,10 +28,12 @@
          * @param {Object}      params
          * @param {HTMLElement} params.headerElm - ボタンを追加する親要素
          * @param {boolean}     [params.isMobile] - モバイル版かどうか(kintone API選択に使用)
+         * @param {string}      [params.facingMode] - カメラの向き('environment'/'user')。省略時は既定値
          */
-        constructor({ headerElm, isMobile = false }) {
+        constructor({ headerElm, isMobile = false, facingMode }) {
             this.headerElm = headerElm;
             this.isMobile = isMobile;
+            this.facingMode = facingMode || CONST.CAMERA.DEFAULT_FACING_MODE;
             this._okHandler = null;
             this._initializeState();
             this._createElements();
@@ -86,7 +91,7 @@
             }
             try {
                 this.stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: CONST.CAMERA.FACING_MODE },
+                    video: { facingMode: this.facingMode },
                 });
                 this.video.srcObject = this.stream;
                 await this.video.play();
@@ -198,14 +203,15 @@
 
         /**
          * kintone通知でメッセージを表示する(静的メソッド・外部からも使用可)。
+         * 呼び出し元はすべてエラー系メッセージのため、typeは'ERROR'固定とする。
          * @param {string}  text
          * @param {boolean} isMobile
          */
         static showNotification(text, isMobile) {
             if (isMobile) {
-                kintone.mobile.showNotification({ text });
+                kintone.mobile.showNotification('ERROR', text);
             } else {
-                kintone.showNotification({ text });
+                kintone.showNotification('ERROR', text);
             }
         }
     }

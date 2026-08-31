@@ -2,17 +2,17 @@
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
 //  V1.1.0     2026/08/17        J.Yamamoto      :フィールドコードを固定値化
-//                                                (kintone側スクリプトのCONST.FIELDと一致させる)
+//                                                (kintone側スクリプトのFIELDと一致させる)
 // ----------------------------------------------------------------------
 //     ModuleName  : 設定読み込み(Config.js)
 //     Description : スクリプトプロパティ(PropertiesService)から機密情報を読み込む。
 //                   フィールドコードは対象アプリで固定のため定数として直接定義する
-//                   (kintone側 src/constant.js の CONST.FIELD と一致させること)。
+//                   (kintone側 src/desktop.js の FIELD と一致させること)。
 // ======================================================================
 
 'use strict';
 
-/** 対象アプリのフィールドコード(固定)。kintone側 src/constant.js の CONST.FIELD と一致させる */
+/** 対象アプリのフィールドコード(固定)。kintone側 src/desktop.js の FIELD と一致させる */
 const FIELD = {
     TITLE: 'Title',
     DEADLINE: 'Deadline',
@@ -33,7 +33,7 @@ const FIELD = {
     RECIPIENT_TYPE: 'RecipientType',
 };
 
-/** kintone側 src/constant.js の CONST.STATUS と一致させる固定値 */
+/** kintone側 src/desktop.js の STATUS と一致させる固定値 */
 const STATUS = {
     UNSENT: '未送信',
     PROCESSING: '送信処理中',

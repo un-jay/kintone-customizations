@@ -1,6 +1,8 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/08/19        J.Yamamoto      :クエリに渡す日時をミリ秒なしのISO 8601形式に統一
+//                                                (公式ドキュメントのクエリ例と同じ形式に揃えるため)
 // ----------------------------------------------------------------------
 //     ModuleName  : リマインド送信処理(ReminderService.js)
 //     Description : 対象レコードの抽出→送信→結果書き戻しを行う業務ロジック。
@@ -15,7 +17,8 @@
  * @returns {{processed: number, succeeded: number, failed: number}} 処理件数のサマリー
  */
 function processReminders(config) {
-    const nowIso = new Date().toISOString();
+    // kintoneのクエリで日時を比較する際はミリ秒なしのISO 8601形式(例: 2026-08-19T12:00:00Z)を使う。
+    const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
     const targetRecords = fetchTargetRecords(config, nowIso);
 
     let succeeded = 0;

@@ -2,6 +2,7 @@
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
 //  V1.1.0     2026/08/17        J.Yamamoto      :複数フィールドへの分割書き込みに対応
+//  V1.2.0     2026/08/18        J.Yamamoto      :複数バーコード規格・カメラ前面/背面選択に対応
 // ----------------------------------------------------------------------
 //     ModuleName  : 設定画面処理(config.js)
 //     Description : プラグイン設定の読み込み・保存を行う。
@@ -19,6 +20,9 @@
 
     const enableQrCheckbox = document.getElementById('enable-qr');
     const enableBarcodeCheckbox = document.getElementById('enable-barcode');
+    const barcodeFormatsRow = document.getElementById('barcode-formats-row');
+    const barcodeFormatsContainer = document.getElementById('barcode-formats-container');
+    const cameraFacingSelect = document.getElementById('camera-facing');
     const splitModeSelect = document.getElementById('split-mode');
     const delimiterRow = document.getElementById('delimiter-row');
     const delimiterPresetSelect = document.getElementById('delimiter-preset');
@@ -33,6 +37,8 @@
 
     /** 画面上の対象フィールド行(フィールドコード入力・桁数入力のペア)を保持する */
     let fieldRows = [];
+    /** バーコード規格チェックボックスの{value, input}一覧 */
+    const barcodeFormatCheckboxes = [];
 
     /** 区切り文字プリセットの<option>を生成する */
     function renderDelimiterPresetOptions() {
@@ -41,6 +47,34 @@
             option.value = value;
             option.textContent = label;
             delimiterPresetSelect.appendChild(option);
+        });
+    }
+
+    /** カメラの向きの<option>を生成する */
+    function renderCameraFacingOptions() {
+        CONST.CAMERA_FACING_OPTIONS.forEach(({ value, label }) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            cameraFacingSelect.appendChild(option);
+        });
+    }
+
+    /** バーコード規格のチェックボックス一覧を生成する */
+    function renderBarcodeFormatCheckboxes() {
+        CONST.BARCODE_FORMATS.forEach(({ value, label }) => {
+            const labelElm = document.createElement('label');
+            labelElm.className = 'code-reader-checkbox-label';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = value;
+
+            labelElm.appendChild(input);
+            labelElm.appendChild(document.createTextNode(label));
+            barcodeFormatsContainer.appendChild(labelElm);
+
+            barcodeFormatCheckboxes.push({ value, input });
         });
     }
 
@@ -98,8 +132,10 @@
         targetFieldsTbody.appendChild(buildFieldRow(field));
     }
 
-    /** 分割方法に応じて、区切り文字設定・桁数列の表示/非表示を切り替える */
+    /** 有効なコード種別・分割方法に応じて、各設定項目の表示/非表示を切り替える */
     function updateVisibility() {
+        barcodeFormatsRow.classList.toggle('hidden', !enableBarcodeCheckbox.checked);
+
         const mode = splitModeSelect.value;
         delimiterRow.classList.toggle('hidden', mode !== SPLIT_MODE.DELIMITER);
         lengthColumnHeader.classList.toggle('hidden', mode !== SPLIT_MODE.FIXED_LENGTH);
@@ -123,6 +159,17 @@
             (config[KEYS.ENABLE_QR] || DEFAULTS.ENABLE_QR) === 'true';
         enableBarcodeCheckbox.checked =
             (config[KEYS.ENABLE_BARCODE] || DEFAULTS.ENABLE_BARCODE) === 'true';
+
+        const savedFormats = CONST.parseBarcodeFormats(config[KEYS.BARCODE_FORMATS]);
+        const enabledFormats = savedFormats.length
+            ? savedFormats
+            : CONST.BARCODE.DEFAULT_FORMATS;
+        barcodeFormatCheckboxes.forEach(({ value, input }) => {
+            input.checked = enabledFormats.includes(value);
+        });
+
+        cameraFacingSelect.value =
+            config[KEYS.CAMERA_FACING] || CONST.CAMERA.DEFAULT_FACING_MODE;
 
         const savedMode = config[KEYS.SPLIT_MODE] || SPLIT_MODE.NONE;
         splitModeSelect.value = savedMode;
@@ -159,6 +206,13 @@
             .filter((field) => field.fieldCode);
     }
 
+    /** チェック済みのバーコード規格の配列を取得する */
+    function collectBarcodeFormats() {
+        return barcodeFormatCheckboxes
+            .filter(({ input }) => input.checked)
+            .map(({ value }) => value);
+    }
+
     /**
      * 選択中の区切り文字を解決する(プリセット、またはカスタム入力値)。
      * @returns {string}
@@ -174,9 +228,12 @@
      * 入力値を検証する。
      * @returns {string} エラーメッセージ(問題なければ空文字)
      */
-    function validate(targetFields) {
+    function validate(targetFields, barcodeFormats) {
         if (!enableQrCheckbox.checked && !enableBarcodeCheckbox.checked) {
-            return 'QRコード・CODE39バーコードのいずれか一方以上を有効にしてください。';
+            return 'QRコード・バーコードのいずれか一方以上を有効にしてください。';
+        }
+        if (enableBarcodeCheckbox.checked && barcodeFormats.length === 0) {
+            return '対応するバーコード規格を1つ以上選択してください。';
         }
         if (targetFields.length === 0) {
             return '書き込み先フィールドを1つ以上指定してください。';
@@ -194,7 +251,8 @@
 
     function handleSave() {
         const targetFields = collectTargetFields();
-        const errorMessage = validate(targetFields);
+        const barcodeFormats = collectBarcodeFormats();
+        const errorMessage = validate(targetFields, barcodeFormats);
         if (errorMessage) {
             errorMessageElm.textContent = errorMessage;
             return;
@@ -204,6 +262,8 @@
         const config = {
             [KEYS.ENABLE_QR]: String(enableQrCheckbox.checked),
             [KEYS.ENABLE_BARCODE]: String(enableBarcodeCheckbox.checked),
+            [KEYS.BARCODE_FORMATS]: barcodeFormats.join(','),
+            [KEYS.CAMERA_FACING]: cameraFacingSelect.value,
             [KEYS.SPLIT_MODE]: splitModeSelect.value,
             [KEYS.DELIMITER]: resolveDelimiter(),
             [KEYS.TARGET_FIELDS]: JSON.stringify(targetFields),
@@ -219,12 +279,15 @@
     }
 
     renderDelimiterPresetOptions();
+    renderCameraFacingOptions();
+    renderBarcodeFormatCheckboxes();
     loadConfig();
 
     addFieldButton.addEventListener('click', () => {
         addFieldRow();
         updateVisibility();
     });
+    enableBarcodeCheckbox.addEventListener('change', updateVisibility);
     splitModeSelect.addEventListener('change', updateVisibility);
     delimiterPresetSelect.addEventListener('change', updateVisibility);
     saveButton.addEventListener('click', handleSave);

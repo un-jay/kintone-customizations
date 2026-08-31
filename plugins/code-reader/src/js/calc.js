@@ -1,6 +1,7 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/08/18        J.Yamamoto      :複数バーコード規格の解析に対応
 // ----------------------------------------------------------------------
 //     ModuleName  : 計算処理(calc.js)
 //     Description : 読み取り結果の分割処理。
@@ -61,6 +62,22 @@
         return [code];
     }
 
+    /**
+     * 設定画面で保存したカンマ区切り文字列を、バーコード規格(Quagga2リーダー種別)の配列へ変換する。
+     * @param {string} csv
+     * @returns {string[]} 空の場合は空配列
+     */
+    function parseBarcodeFormats(csv) {
+        if (!csv) {
+            return [];
+        }
+        return csv
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+    }
+
     CONST.parseTargetFields = parseTargetFields;
     CONST.splitScannedValue = splitScannedValue;
+    CONST.parseBarcodeFormats = parseBarcodeFormats;
 })(window);

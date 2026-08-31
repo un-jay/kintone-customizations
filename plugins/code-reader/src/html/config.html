@@ -3,6 +3,7 @@
  Version    作成日(更新日)    更新者          :更新内容
  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
  V1.1.0     2026/08/17        J.Yamamoto      :複数フィールドへの分割書き込みに対応
+ V1.2.0     2026/08/18        J.Yamamoto      :複数バーコード規格・カメラ前面/背面選択に対応
 ----------------------------------------------------------------------
      ModuleName  : 設定画面(config.html)
      Description : QR/バーコードリーダープラグインの設定画面
@@ -20,8 +21,25 @@
         </label>
         <label class="code-reader-checkbox-label">
             <input type="checkbox" id="enable-barcode" />
-            CODE39バーコード（Quagga2）
+            バーコード（Quagga2）
         </label>
+    </div>
+
+    <div class="kintoneplugin-row" id="barcode-formats-row">
+        <div class="kintoneplugin-title">対応するバーコード規格</div>
+        <div class="kintoneplugin-desc">
+            バーコードを有効にした場合に読み取る規格を選択してください（複数選択可）。
+        </div>
+        <div id="barcode-formats-container"></div>
+    </div>
+
+    <div class="kintoneplugin-row">
+        <div class="kintoneplugin-title">カメラの向き</div>
+        <div class="kintoneplugin-select-outer">
+            <div class="kintoneplugin-select">
+                <select id="camera-facing"></select>
+            </div>
+        </div>
     </div>
 
     <div class="kintoneplugin-row">
