@@ -21,6 +21,41 @@
 
 より実践的な利用例（複数フィールドへの装置ID入力、着手/完了打刻ワークフロー）は [`examples/start-completion-sample`](./examples/start-completion-sample) を参照してください。
 
+## 処理の流れ
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Record as kintoneレコード画面(desktop.js)
+    participant Dialog as カメラダイアログ<br>(QRReader / BarcodeReader)
+    participant Calc as calc.js(純粋関数)
+    participant Kintone as kintone(record.set)
+
+    User->>Record: 「QR/バーコードをスキャン」ボタンをクリック
+    Record->>Dialog: kintone.createDialog / mobile.createBottomSheetでカメラを起動
+    Dialog->>Dialog: jsQR または Quagga2で映像を解析し、コードを検出
+    Dialog-->>User: 読み取り結果の確認ダイアログを表示
+    User->>Dialog: OK（読み取り結果を確定）
+    Dialog->>Calc: splitScannedValue(検出文字列, 分割設定)
+    Calc-->>Dialog: 分割後の値の配列
+    Dialog->>Kintone: record.set(対象フィールドへ書き込み, lookup: true)
+    Kintone-->>Record: ルックアップ先から関連フィールドを自動取得
+    Record-->>User: フォームに反映された値を表示
+```
+
+読み取り結果の分割方法（設定画面の「分割方法」）によって、書き込み前の処理が変わります。
+
+```mermaid
+flowchart TD
+    A[読み取ったコード文字列] --> B{splitMode}
+    B -->|none| C[分割せず先頭のフィールドへそのまま書き込む]
+    B -->|delimiter| D[区切り文字でsplit]
+    B -->|fixedLength| E[各フィールドのlengthで先頭から順に切り出す]
+    D --> F[対象フィールドの並び順に書き込む]
+    E --> F
+    C --> F
+```
+
 ## セットアップ
 
 ### 1. 依存ライブラリ

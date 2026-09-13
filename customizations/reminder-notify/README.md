@@ -15,6 +15,69 @@
 - 送信先テーブルの「送信区分」でTO/CC/BCCを振り分け
 - GAS側は多重実行防止（LockService）・送信可能数チェック・メールアドレス形式チェックにより、運用中のエラーを早期に検知
 
+## 処理の流れ
+
+### 手動での即時送信
+
+「今すぐメール送信」ボタンはその場でメールを送るわけではなく、対象タイミングに印を付けるだけです。実際の送信は次のGAS定期実行を待って行われます。
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Kintone as kintone(レコード詳細画面)
+    participant GAS as GAS(runReminderCheck)
+    participant Mail as MailApp
+
+    User->>Kintone: 「送信要求を登録」ボタンをクリック
+    Kintone-->>User: 対象タイミング・送信先を確認ダイアログで表示
+    User->>Kintone: OK
+    Kintone->>Kintone: PUT(未送信の行にSEND_REQUESTを設定)
+    Note over Kintone,GAS: この時点ではまだメールは送信されない
+    GAS->>Kintone: GET /records.json(次回定期実行時)
+    Kintone-->>GAS: SEND_REQUESTが立っている行を含むレコード
+    GAS->>Mail: sendEmail(件名/本文/宛先)
+    GAS->>Kintone: PUT(SEND_STATUS=送信済み, SENT_AT, SEND_COUNT更新)
+```
+
+### GASによる自動送信（時間主導トリガー）
+
+```mermaid
+sequenceDiagram
+    participant Trigger as 時間主導トリガー(既定5分おき)
+    participant GAS as GAS(runReminderCheck)
+    participant Kintone as kintone
+    participant Mail as MailApp
+
+    Trigger->>GAS: 定期実行
+    GAS->>GAS: LockServiceで多重実行を防止
+    GAS->>Kintone: GET(SEND_STATUS=未送信 かつ SCHEDULED_SEND_AT<=現在時刻 の候補レコード)
+    Kintone-->>GAS: 候補レコード(REMINDER_SCHEDULESを含む)
+    GAS->>GAS: pickDueScheduleRowsで行ごとに送信対象を再判定
+    loop 送信対象の行ごと
+        GAS->>Kintone: PUT(その行のSEND_STATUS=送信処理中)
+        GAS->>Mail: sendEmail
+        alt 送信成功
+            GAS->>Kintone: PUT(SEND_STATUS=送信済み)
+        else 送信失敗
+            GAS->>Kintone: PUT(SEND_STATUS=エラー, ERROR_MESSAGE)
+        end
+    end
+```
+
+### 送信ステータスの状態遷移（`REMINDER_SCHEDULES`の行ごと）
+
+```mermaid
+stateDiagram-v2
+    [*] --> 未送信
+    未送信 --> 送信処理中: 送信予定日時到来 or 即時送信要求
+    送信処理中 --> 送信済み: 送信成功
+    送信処理中 --> エラー: 送信失敗
+    送信済み --> 未送信: レコードを編集して保存
+    エラー --> 未送信: レコードを編集して保存
+```
+
+停止は、GAS側の対象抽出条件から除外するための状態で、UIからの自動遷移はありません（手動設定のみ）。
+
 フィールドコードは`src/desktop.js`（kintone側）・`gas/src/Config.js`（GAS側）の両方に固定値として定義している。設定画面は持たないため、**対象アプリを[CLAUDE.md](./CLAUDE.md)記載のフィールドコードで作成すること**が前提となる。複数アプリで使い回したい場合はフィールドコードをアプリ側で合わせるか、`desktop.js`内の`FIELD`定数を書き換えて使う。
 
 kintone側は`manifest.json`によるパッケージングを持たないプレーンなJS/CSSカスタマイズのため、「JavaScript / CSSでカスタマイズ」画面でのアップロードは手作業になる。ファイル数が増えるほどアップロードの手間・順序ミスのリスクが増えるため、`src/desktop.js`1ファイルに責務ごとのセクションコメントで区切って実装している（プラグインの`src/js/`のようなファイル分割はしない）。
