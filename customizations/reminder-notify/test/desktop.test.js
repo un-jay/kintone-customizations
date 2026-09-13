@@ -1,6 +1,9 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/01        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/13        J.Yamamoto      :ReminderSchedulesテーブル対応に伴い、
+//                                                pickUnsentScheduleRows/
+//                                                buildScheduleDisplayLabelsのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのユニットテスト(desktop.test.js)
 //     Description : 「計算処理」セクションの純粋関数を検証する。
@@ -105,8 +108,8 @@ describe('validateRecipients', () => {
 
     it('送信先コードがすべて空欄の行しかない場合は不正とする', () => {
         const rows = [
-            { value: { RecipientCode: { value: '' } } },
-            { value: { RecipientCode: { value: '' } } },
+            { value: { RECIPIENT_CODE: { value: '' } } },
+            { value: { RECIPIENT_CODE: { value: '' } } },
         ];
         expect(validateRecipientsWrapper(rows)).toEqual({
             valid: false,
@@ -116,14 +119,14 @@ describe('validateRecipients', () => {
 
     it('送信先コードが1件以上入力されていれば有効とする', () => {
         const rows = [
-            { value: { RecipientCode: { value: '' } } },
-            { value: { RecipientCode: { value: 'U001' } } },
+            { value: { RECIPIENT_CODE: { value: '' } } },
+            { value: { RECIPIENT_CODE: { value: 'U001' } } },
         ];
         expect(validateRecipientsWrapper(rows)).toEqual({ valid: true, error: null });
     });
 
     function validateRecipientsWrapper(rows) {
-        return calc.validateRecipients(rows, 'RecipientCode');
+        return calc.validateRecipients(rows, 'RECIPIENT_CODE');
     }
 
     function expectNoRecipientsError() {
@@ -134,18 +137,18 @@ describe('validateRecipients', () => {
 describe('extractRecipientCodes', () => {
     it('送信先コードが空欄の行を除外して配列で返す', () => {
         const rows = [
-            { value: { RecipientCode: { value: 'U001' } } },
-            { value: { RecipientCode: { value: '' } } },
-            { value: { RecipientCode: { value: 'U002' } } },
+            { value: { RECIPIENT_CODE: { value: 'U001' } } },
+            { value: { RECIPIENT_CODE: { value: '' } } },
+            { value: { RECIPIENT_CODE: { value: 'U002' } } },
         ];
-        expect(calc.extractRecipientCodes(rows, 'RecipientCode')).toEqual([
+        expect(calc.extractRecipientCodes(rows, 'RECIPIENT_CODE')).toEqual([
             'U001',
             'U002',
         ]);
     });
 
     it('送信先テーブルが未定義の場合は空配列を返す', () => {
-        expect(calc.extractRecipientCodes(undefined, 'RecipientCode')).toEqual([]);
+        expect(calc.extractRecipientCodes(undefined, 'RECIPIENT_CODE')).toEqual([]);
     });
 });
 
@@ -154,19 +157,19 @@ describe('buildRecipientDisplayNames', () => {
         const rows = [
             {
                 value: {
-                    RecipientName: { value: '山田太郎' },
-                    RecipientCode: { value: 'U001' },
+                    RECIPIENT_NAME: { value: '山田太郎' },
+                    RECIPIENT_CODE: { value: 'U001' },
                 },
             },
             {
                 value: {
-                    RecipientName: { value: '' },
-                    RecipientCode: { value: 'U002' },
+                    RECIPIENT_NAME: { value: '' },
+                    RECIPIENT_CODE: { value: 'U002' },
                 },
             },
         ];
         expect(
-            calc.buildRecipientDisplayNames(rows, 'RecipientName', 'RecipientCode'),
+            calc.buildRecipientDisplayNames(rows, 'RECIPIENT_NAME', 'RECIPIENT_CODE'),
         ).toEqual(['山田太郎', 'U002']);
     });
 
@@ -174,13 +177,54 @@ describe('buildRecipientDisplayNames', () => {
         const rows = [
             {
                 value: {
-                    RecipientName: { value: '' },
-                    RecipientCode: { value: '' },
+                    RECIPIENT_NAME: { value: '' },
+                    RECIPIENT_CODE: { value: '' },
                 },
             },
         ];
         expect(
-            calc.buildRecipientDisplayNames(rows, 'RecipientName', 'RecipientCode'),
+            calc.buildRecipientDisplayNames(rows, 'RECIPIENT_NAME', 'RECIPIENT_CODE'),
+        ).toEqual([]);
+    });
+});
+
+describe('pickUnsentScheduleRows', () => {
+    it('SEND_STATUSが「未送信」の行だけを抽出する', () => {
+        const rows = [
+            { id: '1', value: { SEND_STATUS: { value: '未送信' } } },
+            { id: '2', value: { SEND_STATUS: { value: '送信済み' } } },
+            { id: '3', value: { SEND_STATUS: { value: '未送信' } } },
+        ];
+        const result = calc.pickUnsentScheduleRows(rows, 'SEND_STATUS', '未送信');
+        expect(result.map((row) => row.id)).toEqual(['1', '3']);
+    });
+
+    it('未送信の行が無ければ空配列を返す', () => {
+        const rows = [{ id: '1', value: { SEND_STATUS: { value: '送信済み' } } }];
+        expect(calc.pickUnsentScheduleRows(rows, 'SEND_STATUS', '未送信')).toEqual([]);
+    });
+
+    it('行が未定義の場合は空配列を返す', () => {
+        expect(calc.pickUnsentScheduleRows(undefined, 'SEND_STATUS', '未送信')).toEqual(
+            [],
+        );
+    });
+});
+
+describe('buildScheduleDisplayLabels', () => {
+    it('何日前・送信時刻から表示ラベルを組み立てる', () => {
+        const rows = [
+            { value: { DAYS_BEFORE: { value: '7' }, SEND_TIME: { value: '09:00' } } },
+            { value: { DAYS_BEFORE: { value: '1' }, SEND_TIME: { value: '17:30' } } },
+        ];
+        expect(calc.buildScheduleDisplayLabels(rows, 'DAYS_BEFORE', 'SEND_TIME')).toEqual(
+            ['7日前(09:00)', '1日前(17:30)'],
+        );
+    });
+
+    it('行が未定義の場合は空配列を返す', () => {
+        expect(
+            calc.buildScheduleDisplayLabels(undefined, 'DAYS_BEFORE', 'SEND_TIME'),
         ).toEqual([]);
     });
 });

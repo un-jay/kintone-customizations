@@ -15,6 +15,7 @@ const gasGlobals = {
     ScriptApp: 'readonly',
     Utilities: 'readonly',
     Logger: 'readonly',
+    LockService: 'readonly',
 };
 
 const baseRules = {
@@ -62,6 +63,18 @@ export default [
             sourceType: 'script',
             globals: {
                 ...gasGlobals,
+            },
+        },
+        rules: baseRules,
+    },
+    {
+        // 開発用ビルドスクリプト等(Node上でCommonJSとして実行)
+        files: ['**/scripts/**/*.js'],
+        languageOptions: {
+            ecmaVersion: 2022,
+            sourceType: 'script',
+            globals: {
+                ...globals.node,
             },
         },
         rules: baseRules,

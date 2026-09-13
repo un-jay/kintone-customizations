@@ -25,6 +25,11 @@
 //  V1.7.0     2026/09/01        J.Yamamoto      :buildBaseUrlをVitestからテストできるよう、
 //                                                GAS実行時には影響しないCommonJS export
 //                                                (module存在チェック付き)を末尾に追加
+//  V2.0.0     2026/09/13        J.Yamamoto      :1レコード1タイミングだった送信予定日時を、
+//                                                ReminderSchedulesテーブルによる複数タイミング
+//                                                対応へ変更。updateRecordを廃止し、テーブルの
+//                                                特定行だけを更新するupdateScheduleRowを追加
+//                                                (更新後のrevisionはレスポンスから取得する)
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -60,12 +65,21 @@ function buildAuthHeader(config) {
 }
 
 /**
- * 送信対象レコードを取得する。
+ * 送信対象の候補レコードを取得する。
  * 条件: (送信ステータス=未送信 かつ 送信予定日時<=現在時刻) または 即時送信要求あり。
+ * これらはReminderSchedulesテーブル内のフィールドだが、フィールドコードはアプリ内で
+ * 一意なためテーブル名を付けず直接参照できる。
+ *
+ * 【重要】kintoneのクエリは、サブテーブル内の複数フィールド条件をANDで組み合わせても
+ * 「同じ行が両方の条件を満たす」ことまでは保証しない(別々の行がそれぞれの条件を
+ * 満たしていてもレコードとしてヒットしうる)。そのためこのクエリは「候補レコードの
+ * 粗い絞り込み」に過ぎない。実際にどの行が送信対象かは、取得後に
+ * pickDueScheduleRows(ReminderService.js)で行単位に再判定する。
+ *
  * 501件目以降は$id昇順のseek法で取得する(kintone REST APIの1回あたり取得上限が500件のため)。
  * @param {Object} config
  * @param {string} nowIso - 現在時刻(ISO 8601)
- * @returns {Array<Object>} 対象レコードの配列
+ * @returns {Array<Object>} 対象候補レコードの配列
  */
 function fetchTargetRecords(config, nowIso) {
     const F = config.fields;
@@ -109,16 +123,22 @@ function fetchTargetRecords(config, nowIso) {
 }
 
 /**
- * 1件のレコードを更新する。
- * @param {Object} config
+ * ReminderSchedulesテーブルの特定の1行だけを更新する。
+ * 行はidで指定するため、同じレコード内の他の行・他のフィールドには影響しない。
+ * @param {Object}        config
  * @param {string|number} recordId
  * @param {string}        revision
- * @param {Object}        fieldValues - { フィールドコード: 値 } の形式(kintoneの{value:...}形式ではない)
+ * @param {string|number} scheduleRowId - 更新対象行の$id(テーブル行のid)
+ * @param {Object}        fieldValues   - { フィールドコード: 値 } の形式(行内のフィールド。
+ *                                        kintoneの{value:...}形式ではない)
+ * @returns {string} 更新後のrevision(レスポンスの値をそのまま使う。呼び出し側で
+ *                   +1のような手動計算をしないことで、連続更新時のずれを防ぐ)
  */
-function updateRecord(config, recordId, revision, fieldValues) {
-    const record = {};
+function updateScheduleRow(config, recordId, revision, scheduleRowId, fieldValues) {
+    const F = config.fields;
+    const rowValue = {};
     Object.entries(fieldValues).forEach(([fieldCode, value]) => {
-        record[fieldCode] = { value };
+        rowValue[fieldCode] = { value };
     });
 
     const response = UrlFetchApp.fetch(`${buildBaseUrl(config)}/k/v1/record.json`, {
@@ -132,15 +152,22 @@ function updateRecord(config, recordId, revision, fieldValues) {
             app: config.appId,
             id: recordId,
             revision,
-            record,
+            record: {
+                [F.SCHEDULES]: {
+                    value: [{ id: String(scheduleRowId), value: rowValue }],
+                },
+            },
         }),
     });
 
     if (response.getResponseCode() !== 200) {
         throw new Error(
-            `レコード更新に失敗しました(id=${recordId}): ${response.getContentText()}`,
+            `レコード更新に失敗しました(id=${recordId}, 行id=${scheduleRowId}): ${response.getContentText()}`,
         );
     }
+
+    const body = response.getContentText() ? JSON.parse(response.getContentText()) : {};
+    return body.revision;
 }
 
 // Vitestからのテスト用に、副作用を持たないbuildBaseUrlのみをCommonJS export経由で

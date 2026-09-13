@@ -8,7 +8,8 @@
     "scripts": {
         "login": "clasp login",
         "push": "clasp push",
-        "open": "clasp open"
+        "open": "clasp open",
+        "build": "node scripts/build.js"
     },
     "devDependencies": {
         "@google/clasp": "^2.4.2"

@@ -18,6 +18,10 @@
 //  V1.6.0     2026/09/01        J.Yamamoto      :計算処理の純粋関数をVitestからテストできるよう、
 //                                                ブラウザ実行時には影響しないCommonJS export
 //                                                (module存在チェック付き)を末尾に追加
+//  V2.0.0     2026/09/13        J.Yamamoto      :1レコード1タイミングだった送信予定日時を、
+//                                                ReminderSchedulesテーブルによる複数タイミング
+//                                                対応へ変更。送信ステータス等も行単位で持つ。
+//                                                「今すぐメール送信」は未送信の行をまとめて対象にする
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -34,23 +38,25 @@
 
     /** 対象アプリのフィールドコード(固定)。アプリ側はこのコードに合わせて作成する */
     const FIELD = {
-        TITLE: 'Title',
-        DEADLINE: 'Deadline',
-        DAYS_BEFORE: 'DaysBefore',
-        SEND_TIME: 'SendTime',
-        SCHEDULED_AT: 'ScheduledSendAt',
-        MAIL_SUBJECT: 'MailSubject',
-        MAIL_BODY: 'MailBody',
-        SEND_STATUS: 'SendStatus',
-        SEND_REQUEST: 'SendRequest',
-        SENT_AT: 'SentAt',
-        ERROR_MESSAGE: 'ErrorMessage',
-        SEND_COUNT: 'SendCount',
-        RECIPIENTS: 'Recipients',
-        RECIPIENT_CODE: 'RecipientCode',
-        RECIPIENT_NAME: 'RecipientName',
-        RECIPIENT_EMAIL: 'RecipientEmail',
-        RECIPIENT_TYPE: 'RecipientType',
+        TITLE: 'TITLE',
+        DEADLINE: 'DEADLINE',
+        MAIL_SUBJECT: 'MAIL_SUBJECT',
+        MAIL_BODY: 'MAIL_BODY',
+        RECIPIENTS: 'RECIPIENTS',
+        RECIPIENT_CODE: 'RECIPIENT_CODE',
+        RECIPIENT_NAME: 'RECIPIENT_NAME',
+        RECIPIENT_EMAIL: 'RECIPIENT_EMAIL',
+        RECIPIENT_TYPE: 'RECIPIENT_TYPE',
+        // REMINDER_SCHEDULESテーブル(1行 = 1つの送信タイミング)の列
+        SCHEDULES: 'REMINDER_SCHEDULES',
+        DAYS_BEFORE: 'DAYS_BEFORE',
+        SEND_TIME: 'SEND_TIME',
+        SCHEDULED_AT: 'SCHEDULED_SEND_AT',
+        SEND_STATUS: 'SEND_STATUS',
+        SEND_REQUEST: 'SEND_REQUEST',
+        SENT_AT: 'SENT_AT',
+        ERROR_MESSAGE: 'ERROR_MESSAGE',
+        SEND_COUNT: 'SEND_COUNT',
     };
 
     /** ステータスフィールドに設定する文言(固定値) */
@@ -68,25 +74,27 @@
     /** UIに表示するテキスト */
     const UI = {
         SEND_NOW_BUTTON: '今すぐメール送信',
-        RESEND_BUTTON: '送信済みメールを再送',
         SENDING_LABEL: '送信要求を登録中...',
         CONFIRM_TITLE: '送信確認',
-        CONFIRM_DESC_PREFIX: '次の送信先へメール送信を要求します。',
+        CONFIRM_SCHEDULES_LABEL: '対象タイミング',
+        CONFIRM_RECIPIENTS_LABEL: '送信先',
         CONFIRM_OK: '送信要求を登録',
         CONFIRM_CANCEL: 'キャンセル',
         NOTIFY_SUCCESS:
             'メール送信要求を登録しました。GASの次回定期実行時に送信されます。',
         NOTIFY_NO_RECIPIENTS: '送信先が登録されていません。',
+        NOTIFY_NO_SCHEDULES: '送信可能な未送信タイミングがありません。',
     };
 
-    /** エラーメッセージ */
     /** 成功通知を表示してからリロードするまでの待機時間(ミリ秒)。通知を読めるようにするため */
     const RELOAD_DELAY_MS = 1500;
 
+    /** エラーメッセージ */
     const MSGS = {
         INVALID_DAYS_BEFORE: '「何日前に送るか」には0以上の整数を入力してください。',
         NO_RECIPIENTS: '送信先を1件以上登録してください。',
-        PROCESSING_LOCKED: '現在メール送信処理中のため、編集できません。',
+        NO_SCHEDULES: '送信タイミング(ReminderSchedules)を1件以上登録してください。',
+        PROCESSING_LOCKED: '現在メール送信処理中の行があるため、編集できません。',
         SEND_REQUEST_FAILED: '送信要求の登録に失敗しました。',
     };
 
@@ -183,28 +191,66 @@
             .filter(Boolean);
     }
 
+    /**
+     * ReminderSchedulesテーブルの行から、現在「未送信」の行だけを抽出する。
+     * 「今すぐメール送信」ボタンは、この関数が返す行をまとめて即時送信対象にする。
+     * @param {Array<Object>} scheduleRows      - ReminderSchedulesテーブルのvalue配列
+     * @param {string}        sendStatusField   - 送信ステータスのフィールドコード
+     * @param {string}        unsentStatusValue - 「未送信」を表すステータス文言
+     * @returns {Array<Object>} 未送信の行配列(id/valueを含む元の行オブジェクトのまま)
+     */
+    function pickUnsentScheduleRows(scheduleRows, sendStatusField, unsentStatusValue) {
+        return (scheduleRows || []).filter(
+            (row) => row.value[sendStatusField]?.value === unsentStatusValue,
+        );
+    }
+
+    /**
+     * ReminderSchedulesの行から、確認ダイアログ表示用のラベル一覧を作る(例: "3日前(09:00)")。
+     * @param {Array<Object>} scheduleRows
+     * @param {string}        daysBeforeField
+     * @param {string}        sendTimeField
+     * @returns {string[]}
+     */
+    function buildScheduleDisplayLabels(scheduleRows, daysBeforeField, sendTimeField) {
+        return (scheduleRows || []).map((row) => {
+            const daysBefore = row.value[daysBeforeField]?.value;
+            const sendTime = row.value[sendTimeField]?.value;
+            return `${daysBefore}日前(${sendTime})`;
+        });
+    }
+
     // ==========================
     // REST API処理
     // kintone REST APIの呼び出しのみを行う。DOM操作・計算処理は行わない。
     // ==========================
 
     /**
-     * 即時送信要求を登録する(対象レコードのSendRequest/SendStatus/ErrorMessageを更新)。
+     * ReminderSchedulesの指定行をまとめて即時送信要求へ更新する。
+     * 行はidで指定するため、他の行・他のフィールドには影響しない。
      * @param {Object} params
      * @param {number} params.appId
      * @param {number} params.recordId
      * @param {string} params.revision
+     * @param {Array<Object>} params.scheduleRows - 対象行(id/valueを含む元の行オブジェクト)
      * @returns {Promise<Object>} kintone REST APIのレスポンス
      */
-    async function requestImmediateSend({ appId, recordId, revision }) {
+    async function requestImmediateSend({ appId, recordId, revision, scheduleRows }) {
         const params = {
             app: appId,
             id: recordId,
             revision,
             record: {
-                [FIELD.SEND_REQUEST]: { value: [SEND_REQUEST_VALUE] },
-                [FIELD.SEND_STATUS]: { value: STATUS.UNSENT },
-                [FIELD.ERROR_MESSAGE]: { value: '' },
+                [FIELD.SCHEDULES]: {
+                    value: scheduleRows.map((row) => ({
+                        id: row.id,
+                        value: {
+                            [FIELD.SEND_REQUEST]: { value: [SEND_REQUEST_VALUE] },
+                            [FIELD.SEND_STATUS]: { value: STATUS.UNSENT },
+                            [FIELD.ERROR_MESSAGE]: { value: '' },
+                        },
+                    })),
+                },
             },
         };
 
@@ -216,16 +262,12 @@
     // DOM生成・ダイアログ表示・通知表示を行う。DOM操作を許可する唯一のセクション。
     // ==========================
 
-    /**
-     * 即時送信ボタンを生成する(まだ親要素へは追加しない)。
-     * @param {boolean} isResend - 送信済みレコードへの再送かどうか
-     * @returns {HTMLButtonElement}
-     */
-    function createSendButton(isResend) {
+    /** 即時送信ボタンを生成する(まだ親要素へは追加しない) */
+    function createSendButton() {
         const button = document.createElement('button');
         button.id = BUTTON_ID;
         button.className = 'kintoneplugin-button-normal';
-        button.textContent = isResend ? UI.RESEND_BUTTON : UI.SEND_NOW_BUTTON;
+        button.textContent = UI.SEND_NOW_BUTTON;
         button.style.marginLeft = '8px';
         return button;
     }
@@ -236,35 +278,23 @@
         button.textContent = UI.SENDING_LABEL;
     }
 
-    /**
-     * ボタンを通常表示へ戻す。
-     * @param {HTMLButtonElement} button
-     * @param {boolean} isResend
-     */
-    function resetButton(button, isResend) {
+    /** ボタンを通常表示へ戻す */
+    function resetButton(button) {
         button.disabled = false;
-        button.textContent = isResend ? UI.RESEND_BUTTON : UI.SEND_NOW_BUTTON;
+        button.textContent = UI.SEND_NOW_BUTTON;
     }
 
     /**
      * 送信確認ダイアログを表示する。
-     * @param {string[]} recipientNames
+     * @param {string[]} scheduleLabels  - 対象タイミングの表示名一覧
+     * @param {string[]} recipientNames  - 送信先の表示名一覧
      * @returns {Promise<boolean>} OKが押されたらtrue
      */
-    async function confirmSend(recipientNames) {
+    async function confirmSend(scheduleLabels, recipientNames) {
         const bodyElm = document.createElement('div');
 
-        const descElm = document.createElement('p');
-        descElm.textContent = UI.CONFIRM_DESC_PREFIX;
-        bodyElm.appendChild(descElm);
-
-        const listElm = document.createElement('ul');
-        recipientNames.forEach((name) => {
-            const itemElm = document.createElement('li');
-            itemElm.textContent = name;
-            listElm.appendChild(itemElm);
-        });
-        bodyElm.appendChild(listElm);
+        appendLabeledList(bodyElm, UI.CONFIRM_SCHEDULES_LABEL, scheduleLabels);
+        appendLabeledList(bodyElm, UI.CONFIRM_RECIPIENTS_LABEL, recipientNames);
 
         const dialog = await kintone.createDialog({
             title: UI.CONFIRM_TITLE,
@@ -277,6 +307,21 @@
 
         const action = await dialog.show();
         return action === 'OK';
+    }
+
+    /** ダイアログ本文へ「見出し + 箇条書き」を追加する */
+    function appendLabeledList(parentElm, label, items) {
+        const labelElm = document.createElement('p');
+        labelElm.textContent = `${label}：`;
+        parentElm.appendChild(labelElm);
+
+        const listElm = document.createElement('ul');
+        items.forEach((item) => {
+            const itemElm = document.createElement('li');
+            itemElm.textContent = item;
+            listElm.appendChild(itemElm);
+        });
+        parentElm.appendChild(listElm);
     }
 
     /**
@@ -293,42 +338,79 @@
     // イベント登録のみを行う(計算処理→API処理→UI処理の呼び出し)。
     // ==========================
 
-    const CALC_EVENTS = [
-        'app.record.create.change.' + FIELD.DEADLINE,
-        'app.record.create.change.' + FIELD.DAYS_BEFORE,
-        'app.record.create.change.' + FIELD.SEND_TIME,
-        'app.record.edit.change.' + FIELD.DEADLINE,
-        'app.record.edit.change.' + FIELD.DAYS_BEFORE,
-        'app.record.edit.change.' + FIELD.SEND_TIME,
-    ];
+    /** 納期の変更: ReminderSchedulesの全行を再計算する */
+    kintone.events.on(
+        [
+            'app.record.create.change.' + FIELD.DEADLINE,
+            'app.record.edit.change.' + FIELD.DEADLINE,
+        ],
+        (event) => {
+            const record = event.record;
+            const deadline = record[FIELD.DEADLINE].value;
+            const scheduleRows = record[FIELD.SCHEDULES].value;
 
-    kintone.events.on(CALC_EVENTS, (event) => {
-        const record = event.record;
-        const result = calculateScheduledDateTime({
-            deadline: record[FIELD.DEADLINE].value,
-            daysBeforeText: record[FIELD.DAYS_BEFORE].value,
-            sendTime: record[FIELD.SEND_TIME].value,
-        });
-
-        if (result.error) {
-            event.error = result.error;
+            for (const row of scheduleRows) {
+                const result = calculateScheduledDateTime({
+                    deadline,
+                    daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
+                    sendTime: row.value[FIELD.SEND_TIME].value,
+                });
+                if (result.error) {
+                    event.error = result.error;
+                    return event;
+                }
+                row.value[FIELD.SCHEDULED_AT].value = result.value;
+            }
             return event;
-        }
-        record[FIELD.SCHEDULED_AT].value = result.value;
-        return event;
-    });
+        },
+    );
+
+    /** ReminderSchedules行の変更(何日前/送信時刻/行追加): 変更された行だけ再計算する */
+    kintone.events.on(
+        [
+            'app.record.create.change.' + FIELD.SCHEDULES,
+            'app.record.edit.change.' + FIELD.SCHEDULES,
+        ],
+        (event) => {
+            const row = event.changes && event.changes.row;
+            if (!row) {
+                return event;
+            }
+
+            const result = calculateScheduledDateTime({
+                deadline: event.record[FIELD.DEADLINE].value,
+                daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
+                sendTime: row.value[FIELD.SEND_TIME].value,
+            });
+            if (result.error) {
+                event.error = result.error;
+                return event;
+            }
+            row.value[FIELD.SCHEDULED_AT].value = result.value;
+            return event;
+        },
+    );
 
     /** 新規保存時・編集保存時共通のバリデーション+算出 */
     function validateAndCalculate(record) {
-        const result = calculateScheduledDateTime({
-            deadline: record[FIELD.DEADLINE].value,
-            daysBeforeText: record[FIELD.DAYS_BEFORE].value,
-            sendTime: record[FIELD.SEND_TIME].value,
-        });
-        if (result.error) {
-            throw new Error(result.error);
+        const deadline = record[FIELD.DEADLINE].value;
+        const scheduleRows = record[FIELD.SCHEDULES].value;
+
+        if (scheduleRows.length === 0) {
+            throw new Error(MSGS.NO_SCHEDULES);
         }
-        record[FIELD.SCHEDULED_AT].value = result.value;
+
+        scheduleRows.forEach((row) => {
+            const result = calculateScheduledDateTime({
+                deadline,
+                daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
+                sendTime: row.value[FIELD.SEND_TIME].value,
+            });
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            row.value[FIELD.SCHEDULED_AT].value = result.value;
+        });
 
         const recipientCheck = validateRecipients(
             record[FIELD.RECIPIENTS].value,
@@ -343,13 +425,15 @@
         const record = event.record;
         try {
             validateAndCalculate(record);
-            record[FIELD.SEND_STATUS].value = STATUS.UNSENT;
-            record[FIELD.SEND_REQUEST].value = [];
-            record[FIELD.SENT_AT].value = '';
-            record[FIELD.ERROR_MESSAGE].value = '';
-            if (!record[FIELD.SEND_COUNT].value) {
-                record[FIELD.SEND_COUNT].value = '0';
-            }
+            record[FIELD.SCHEDULES].value.forEach((row) => {
+                row.value[FIELD.SEND_STATUS].value = STATUS.UNSENT;
+                row.value[FIELD.SEND_REQUEST].value = [];
+                row.value[FIELD.SENT_AT].value = '';
+                row.value[FIELD.ERROR_MESSAGE].value = '';
+                if (!row.value[FIELD.SEND_COUNT].value) {
+                    row.value[FIELD.SEND_COUNT].value = '0';
+                }
+            });
         } catch (error) {
             event.error = error.message;
         }
@@ -361,19 +445,18 @@
         try {
             validateAndCalculate(record);
 
-            if (record[FIELD.SEND_STATUS].value === STATUS.PROCESSING) {
-                throw new Error(MSGS.PROCESSING_LOCKED);
-            }
-
-            if (
-                record[FIELD.SEND_STATUS].value === STATUS.SENT ||
-                record[FIELD.SEND_STATUS].value === STATUS.ERROR
-            ) {
-                record[FIELD.SEND_STATUS].value = STATUS.UNSENT;
-                record[FIELD.SEND_REQUEST].value = [];
-                record[FIELD.SENT_AT].value = '';
-                record[FIELD.ERROR_MESSAGE].value = '';
-            }
+            record[FIELD.SCHEDULES].value.forEach((row) => {
+                const status = row.value[FIELD.SEND_STATUS].value;
+                if (status === STATUS.PROCESSING) {
+                    throw new Error(MSGS.PROCESSING_LOCKED);
+                }
+                if (status === STATUS.SENT || status === STATUS.ERROR) {
+                    row.value[FIELD.SEND_STATUS].value = STATUS.UNSENT;
+                    row.value[FIELD.SEND_REQUEST].value = [];
+                    row.value[FIELD.SENT_AT].value = '';
+                    row.value[FIELD.ERROR_MESSAGE].value = '';
+                }
+            });
         } catch (error) {
             event.error = error.message;
         }
@@ -386,21 +469,25 @@
         }
 
         const record = event.record;
-        const currentStatus = record[FIELD.SEND_STATUS].value;
-        if (currentStatus === STATUS.PROCESSING || currentStatus === STATUS.STOPPED) {
-            return event;
-        }
-
-        const isResend = currentStatus === STATUS.SENT;
-        const button = createSendButton(isResend);
+        const button = createSendButton();
 
         button.addEventListener('click', async () => {
+            const scheduleRows = record[FIELD.SCHEDULES].value || [];
+            const unsentRows = pickUnsentScheduleRows(
+                scheduleRows,
+                FIELD.SEND_STATUS,
+                STATUS.UNSENT,
+            );
+            if (unsentRows.length === 0) {
+                notify(UI.NOTIFY_NO_SCHEDULES, 'ERROR');
+                return;
+            }
+
             const recipientRows = record[FIELD.RECIPIENTS].value || [];
             const recipientCodes = extractRecipientCodes(
                 recipientRows,
                 FIELD.RECIPIENT_CODE,
             );
-
             if (recipientCodes.length === 0) {
                 notify(UI.NOTIFY_NO_RECIPIENTS, 'ERROR');
                 return;
@@ -411,8 +498,13 @@
                 FIELD.RECIPIENT_NAME,
                 FIELD.RECIPIENT_CODE,
             );
+            const scheduleLabels = buildScheduleDisplayLabels(
+                unsentRows,
+                FIELD.DAYS_BEFORE,
+                FIELD.SEND_TIME,
+            );
 
-            const confirmed = await confirmSend(recipientNames);
+            const confirmed = await confirmSend(scheduleLabels, recipientNames);
             if (!confirmed) {
                 return;
             }
@@ -423,6 +515,7 @@
                     appId: kintone.app.getId(),
                     recordId: kintone.app.record.getId(),
                     revision: record.$revision.value,
+                    scheduleRows: unsentRows,
                 });
                 notify(UI.NOTIFY_SUCCESS, 'SUCCESS');
                 // 通知を読めるように少し待ってからリロードする。
@@ -435,7 +528,7 @@
                         (error.message || JSON.stringify(error)),
                     'ERROR',
                 );
-                resetButton(button, isResend);
+                resetButton(button);
             }
         });
 
@@ -456,6 +549,8 @@
             validateRecipients,
             extractRecipientCodes,
             buildRecipientDisplayNames,
+            pickUnsentScheduleRows,
+            buildScheduleDisplayLabels,
             MSGS,
         };
     }

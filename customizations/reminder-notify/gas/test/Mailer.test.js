@@ -1,53 +1,57 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/01        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/13        J.Yamamoto      :isValidEmailのテストと、
+//                                                extractRecipientsByTypeが不正な
+//                                                メールアドレス形式でエラーになることの
+//                                                テストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : Mailer.jsのユニットテスト(Mailer.test.js)
-//     Description : renderTemplate/extractRecipientsByType
+//     Description : renderTemplate/extractRecipientsByType/isValidEmail
 //                   (いずれも副作用を持たない純粋関数)を検証する。
 // ======================================================================
 
 import { describe, expect, it } from 'vitest';
 import Mailer from '../src/Mailer.js';
 
-const { renderTemplate, extractRecipientsByType } = Mailer;
+const { renderTemplate, extractRecipientsByType, isValidEmail } = Mailer;
 
 describe('renderTemplate', () => {
     it('{{フィールドコード}}をレコードの値へ置換する', () => {
         const record = {
-            Title: { value: '定例会議' },
-            Deadline: { value: '2026-09-10' },
+            TITLE: { value: '定例会議' },
+            DEADLINE: { value: '2026-09-10' },
         };
-        expect(renderTemplate('件名: {{Title}}(納期: {{Deadline}})', record)).toBe(
+        expect(renderTemplate('件名: {{TITLE}}(納期: {{DEADLINE}})', record)).toBe(
             '件名: 定例会議(納期: 2026-09-10)',
         );
     });
 
     it('レコードに存在しないフィールドコードはプレースホルダのまま残す', () => {
-        const record = { Title: { value: '定例会議' } };
-        expect(renderTemplate('{{Title}} / {{UnknownField}}', record)).toBe(
-            '定例会議 / {{UnknownField}}',
+        const record = { TITLE: { value: '定例会議' } };
+        expect(renderTemplate('{{TITLE}} / {{UNKNOWN_FIELD}}', record)).toBe(
+            '定例会議 / {{UNKNOWN_FIELD}}',
         );
     });
 
     it('値がnull/undefinedのフィールドはプレースホルダのまま残す', () => {
-        const record = { Title: { value: null } };
-        expect(renderTemplate('{{Title}}', record)).toBe('{{Title}}');
+        const record = { TITLE: { value: null } };
+        expect(renderTemplate('{{TITLE}}', record)).toBe('{{TITLE}}');
     });
 });
 
 describe('extractRecipientsByType', () => {
     const config = {
         fields: {
-            RECIPIENTS: 'Recipients',
-            RECIPIENT_EMAIL: 'RecipientEmail',
-            RECIPIENT_TYPE: 'RecipientType',
+            RECIPIENTS: 'RECIPIENTS',
+            RECIPIENT_EMAIL: 'RECIPIENT_EMAIL',
+            RECIPIENT_TYPE: 'RECIPIENT_TYPE',
         },
     };
 
     it('送信区分ごとにTO/CC/BCCへ振り分ける', () => {
         const record = {
-            Recipients: {
+            RECIPIENTS: {
                 value: [
                     row('to@example.com', 'TO'),
                     row('cc@example.com', 'CC'),
@@ -64,7 +68,7 @@ describe('extractRecipientsByType', () => {
 
     it('送信区分が未設定・不明な値の行はTO扱いにする', () => {
         const record = {
-            Recipients: {
+            RECIPIENTS: {
                 value: [
                     row('unspecified@example.com', ''),
                     row('unknown@example.com', 'XX'),
@@ -79,7 +83,7 @@ describe('extractRecipientsByType', () => {
     });
 
     it('メールアドレスが未入力の行は除外する', () => {
-        const record = { Recipients: { value: [row('', 'TO')] } };
+        const record = { RECIPIENTS: { value: [row('', 'TO')] } };
         expect(extractRecipientsByType(config, record)).toEqual({
             to: [],
             cc: [],
@@ -95,12 +99,31 @@ describe('extractRecipientsByType', () => {
         });
     });
 
+    it('メールアドレスの形式が不正な行があればエラーにする(黙って無視しない)', () => {
+        const record = {
+            RECIPIENTS: { value: [row('invalid-email', 'TO')] },
+        };
+        expect(() => extractRecipientsByType(config, record)).toThrow(/invalid-email/);
+    });
+
     function row(email, type) {
         return {
             value: {
-                RecipientEmail: { value: email },
-                RecipientType: { value: type },
+                RECIPIENT_EMAIL: { value: email },
+                RECIPIENT_TYPE: { value: type },
             },
         };
     }
+});
+
+describe('isValidEmail', () => {
+    it('正しい形式のメールアドレスはtrueを返す', () => {
+        expect(isValidEmail('user@example.com')).toBe(true);
+    });
+
+    it('@が無い・ドメイン部にドットが無いなど不正な形式はfalseを返す', () => {
+        expect(isValidEmail('invalid-email')).toBe(false);
+        expect(isValidEmail('user@example')).toBe(false);
+        expect(isValidEmail('@example.com')).toBe(false);
+    });
 });

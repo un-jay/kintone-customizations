@@ -3,6 +3,9 @@
 //  V1.0.0     2026/08/17        J.Yamamoto      :新規作成
 //  V1.1.0     2026/08/17        J.Yamamoto      :フィールドコードを固定値化
 //                                                (kintone側スクリプトのFIELDと一致させる)
+//  V1.2.0     2026/09/13        J.Yamamoto      :1レコード1タイミングだった送信予定日時を、
+//                                                ReminderSchedulesテーブルによる複数タイミング
+//                                                対応へ変更(SCHEDULESキーを追加)
 // ----------------------------------------------------------------------
 //     ModuleName  : 設定読み込み(Config.js)
 //     Description : スクリプトプロパティ(PropertiesService)から機密情報を読み込む。
@@ -14,23 +17,27 @@
 
 /** 対象アプリのフィールドコード(固定)。kintone側 src/desktop.js の FIELD と一致させる */
 const FIELD = {
-    TITLE: 'Title',
-    DEADLINE: 'Deadline',
-    DAYS_BEFORE: 'DaysBefore',
-    SEND_TIME: 'SendTime',
-    SCHEDULED_AT: 'ScheduledSendAt',
-    MAIL_SUBJECT: 'MailSubject',
-    MAIL_BODY: 'MailBody',
-    SEND_STATUS: 'SendStatus',
-    SEND_REQUEST: 'SendRequest',
-    SENT_AT: 'SentAt',
-    ERROR_MESSAGE: 'ErrorMessage',
-    SEND_COUNT: 'SendCount',
-    RECIPIENTS: 'Recipients',
-    RECIPIENT_CODE: 'RecipientCode',
-    RECIPIENT_NAME: 'RecipientName',
-    RECIPIENT_EMAIL: 'RecipientEmail',
-    RECIPIENT_TYPE: 'RecipientType',
+    TITLE: 'TITLE',
+    DEADLINE: 'DEADLINE',
+    MAIL_SUBJECT: 'MAIL_SUBJECT',
+    MAIL_BODY: 'MAIL_BODY',
+    RECIPIENTS: 'RECIPIENTS',
+    RECIPIENT_CODE: 'RECIPIENT_CODE',
+    RECIPIENT_NAME: 'RECIPIENT_NAME',
+    RECIPIENT_EMAIL: 'RECIPIENT_EMAIL',
+    RECIPIENT_TYPE: 'RECIPIENT_TYPE',
+    // REMINDER_SCHEDULESテーブル(1行 = 1つの送信タイミング)の列。
+    // フィールドコードはkintone側でアプリ全体を通じて一意なため、
+    // クエリやrecord[...]での参照はテーブル名を付けず直接このコードで行う。
+    SCHEDULES: 'REMINDER_SCHEDULES',
+    DAYS_BEFORE: 'DAYS_BEFORE',
+    SEND_TIME: 'SEND_TIME',
+    SCHEDULED_AT: 'SCHEDULED_SEND_AT',
+    SEND_STATUS: 'SEND_STATUS',
+    SEND_REQUEST: 'SEND_REQUEST',
+    SENT_AT: 'SENT_AT',
+    ERROR_MESSAGE: 'ERROR_MESSAGE',
+    SEND_COUNT: 'SEND_COUNT',
 };
 
 /** kintone側 src/desktop.js の STATUS と一致させる固定値 */

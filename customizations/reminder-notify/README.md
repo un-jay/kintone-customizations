@@ -9,10 +9,11 @@
 
 ## 特長
 
-- 「納期」「何日前に送るか」「送信時刻」から送信予定日時を自動算出
-- レコード詳細画面から手動で即時送信をリクエストできる
+- 1件の納期に対して**複数の送信タイミング**（例: 7日前・3日前・前日）を設定可能。「納期」と、各タイミングの「何日前に送るか」「送信時刻」から送信予定日時を自動算出
+- レコード詳細画面から手動で即時送信をリクエストできる（未送信のタイミングをまとめて対象にする）
 - 実際の送信はGAS側が担当するため、kintone側はメール送信のためのAPIリクエストを消費しない
 - 送信先テーブルの「送信区分」でTO/CC/BCCを振り分け
+- GAS側は多重実行防止（LockService）・送信可能数チェック・メールアドレス形式チェックにより、運用中のエラーを早期に検知
 
 フィールドコードは`src/desktop.js`（kintone側）・`gas/src/Config.js`（GAS側）の両方に固定値として定義している。設定画面は持たないため、**対象アプリを[CLAUDE.md](./CLAUDE.md)記載のフィールドコードで作成すること**が前提となる。複数アプリで使い回したい場合はフィールドコードをアプリ側で合わせるか、`desktop.js`内の`FIELD`定数を書き換えて使う。
 
@@ -29,13 +30,12 @@ kintone側は`manifest.json`によるパッケージングを持たないプレ�
 
 対象アプリには、[CLAUDE.md](./CLAUDE.md) に記載のフィールドコードで、以下のフィールドを用意してください。
 
-- 文字列: タイトル(`Title`)、メール件名(`MailSubject`)、メール本文(`MailBody`)、送信ステータス(`SendStatus`)、エラーメッセージ(`ErrorMessage`)
-- 日付: 納期(`Deadline`)
-- 数値: 何日前に送るか(`DaysBefore`)、送信回数(`SendCount`)
-- 時刻: 送信時刻(`SendTime`)
-- 日時: 送信予定日時(`ScheduledSendAt`)、送信日時(`SentAt`)
-- チェックボックス等（複数選択）: 即時送信要求(`SendRequest`)
-- テーブル: 送信先(`Recipients`。サブフィールド`RecipientCode`/`RecipientName`/`RecipientEmail`/`RecipientType`)
+- 文字列: タイトル(`TITLE`)、メール件名(`MAIL_SUBJECT`)、メール本文(`MAIL_BODY`)
+- 日付: 納期(`DEADLINE`)
+- テーブル: 送信先(`RECIPIENTS`。サブフィールド`RECIPIENT_CODE`/`RECIPIENT_NAME`/`RECIPIENT_EMAIL`/`RECIPIENT_TYPE`)
+- テーブル: 送信タイミング(`REMINDER_SCHEDULES`。1行＝1回のリマインド。サブフィールド`DAYS_BEFORE`/`SEND_TIME`/`SCHEDULED_SEND_AT`/`SEND_STATUS`/`SEND_REQUEST`/`SENT_AT`/`ERROR_MESSAGE`/`SEND_COUNT`)
+
+各サブフィールドの型は[CLAUDE.md](./CLAUDE.md)のフィールド一覧を参照してください。
 
 ### 2. GAS側
 
