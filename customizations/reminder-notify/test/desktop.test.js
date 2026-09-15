@@ -228,3 +228,52 @@ describe('buildScheduleDisplayLabels', () => {
         ).toEqual([]);
     });
 });
+
+describe('shouldResetSendStatus', () => {
+    it('送信済みの行で、送信予定日時が実際に変わった場合はtrueを返す', () => {
+        expect(
+            calc.shouldResetSendStatus(
+                '送信済み',
+                '2026-09-01T00:00:00.000Z',
+                '2026-09-05T00:00:00.000Z',
+            ),
+        ).toBe(true);
+    });
+
+    it('エラーの行で、送信予定日時が実際に変わった場合はtrueを返す', () => {
+        expect(
+            calc.shouldResetSendStatus(
+                'エラー',
+                '2026-09-01T00:00:00.000Z',
+                '2026-09-05T00:00:00.000Z',
+            ),
+        ).toBe(true);
+    });
+
+    it('送信予定日時が変わっていない場合は、無関係な項目の編集で保存してもfalseを返す', () => {
+        expect(
+            calc.shouldResetSendStatus(
+                '送信済み',
+                '2026-09-01T00:00:00.000Z',
+                '2026-09-01T00:00:00.000Z',
+            ),
+        ).toBe(false);
+    });
+
+    it('未送信・送信処理中の行は、送信予定日時が変わってもfalseを返す(対象外)', () => {
+        expect(
+            calc.shouldResetSendStatus(
+                '未送信',
+                '2026-09-01T00:00:00.000Z',
+                '2026-09-05T00:00:00.000Z',
+            ),
+        ).toBe(false);
+        expect(
+            calc.shouldResetSendStatus(
+                '送信処理中',
+                '2026-09-01T00:00:00.000Z',
+                '2026-09-05T00:00:00.000Z',
+            ),
+        ).toBe(false);
+    });
+});

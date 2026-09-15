@@ -22,6 +22,11 @@
 //                                                ReminderSchedulesテーブルによる複数タイミング
 //                                                対応へ変更。送信ステータス等も行単位で持つ。
 //                                                「今すぐメール送信」は未送信の行をまとめて対象にする
+//  V2.1.0     2026/09/13        J.Yamamoto      :編集保存時、無関係な項目を直しただけで
+//                                                送信済み/エラーの行までリセットされ、
+//                                                履歴消失や意図しない再送信が起きうる不具合を修正。
+//                                                その行の送信予定日時が実際に変わった場合のみ
+//                                                未送信へ戻すように変更
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -218,6 +223,20 @@
             const sendTime = row.value[sendTimeField]?.value;
             return `${daysBefore}日前(${sendTime})`;
         });
+    }
+
+    /**
+     * 送信済み・エラーの行を未送信へ戻すべきかを判定する。
+     * その行の送信予定日時が実際に変わった場合のみtrueを返す。無関係な項目を
+     * 直しただけの保存で送信履歴が消えたり、意図せず再送信対象に戻ったりしないようにするため。
+     * @param {string} status              - 現在のSEND_STATUS
+     * @param {string} previousScheduledAt - 再計算前のSCHEDULED_SEND_AT
+     * @param {string} newScheduledAt      - 再計算後のSCHEDULED_SEND_AT
+     * @returns {boolean}
+     */
+    function shouldResetSendStatus(status, previousScheduledAt, newScheduledAt) {
+        const isSentOrError = status === STATUS.SENT || status === STATUS.ERROR;
+        return isSentOrError && newScheduledAt !== previousScheduledAt;
     }
 
     // ==========================
@@ -443,14 +462,27 @@
     kintone.events.on('app.record.edit.submit', (event) => {
         const record = event.record;
         try {
+            // 送信タイミングが実際に変わった行だけ未送信へ戻すため、再計算前の
+            // SCHEDULED_AT を退避しておく(無関係な項目の編集で保存しただけで
+            // 送信済み・エラーの履歴が消え、誤って再送信されてしまうのを防ぐ)。
+            const previousScheduledAtList = record[FIELD.SCHEDULES].value.map(
+                (row) => row.value[FIELD.SCHEDULED_AT].value,
+            );
+
             validateAndCalculate(record);
 
-            record[FIELD.SCHEDULES].value.forEach((row) => {
+            record[FIELD.SCHEDULES].value.forEach((row, index) => {
                 const status = row.value[FIELD.SEND_STATUS].value;
                 if (status === STATUS.PROCESSING) {
                     throw new Error(MSGS.PROCESSING_LOCKED);
                 }
-                if (status === STATUS.SENT || status === STATUS.ERROR) {
+                if (
+                    shouldResetSendStatus(
+                        status,
+                        previousScheduledAtList[index],
+                        row.value[FIELD.SCHEDULED_AT].value,
+                    )
+                ) {
                     row.value[FIELD.SEND_STATUS].value = STATUS.UNSENT;
                     row.value[FIELD.SEND_REQUEST].value = [];
                     row.value[FIELD.SENT_AT].value = '';
@@ -551,6 +583,7 @@
             buildRecipientDisplayNames,
             pickUnsentScheduleRows,
             buildScheduleDisplayLabels,
+            shouldResetSendStatus,
             MSGS,
         };
     }
