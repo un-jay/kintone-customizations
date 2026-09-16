@@ -79,7 +79,7 @@ describe('calculateScheduledDateTime', () => {
             sendTime: '09:00',
         });
         expect(result.error).toBeNull();
-        expect(result.value).toBe(expectedDate.toISOString());
+        expect(result.value).toBe(expectedDate.toISOString().replace(/\.\d{3}Z$/, 'Z'));
     });
 
     it('何日前=0の場合は納期当日の送信時刻をそのまま算出する', () => {
@@ -90,7 +90,16 @@ describe('calculateScheduledDateTime', () => {
             sendTime: '18:30',
         });
         expect(result.error).toBeNull();
-        expect(result.value).toBe(expectedDate.toISOString());
+        expect(result.value).toBe(expectedDate.toISOString().replace(/\.\d{3}Z$/, 'Z'));
+    });
+
+    it('返り値にミリ秒を含まない(kintoneの日時フィールドの値と形式を一致させるため)', () => {
+        const result = calc.calculateScheduledDateTime({
+            deadline: '2026-09-10',
+            daysBeforeText: '0',
+            sendTime: '18:30',
+        });
+        expect(result.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
     });
 });
 

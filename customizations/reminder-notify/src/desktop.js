@@ -32,6 +32,11 @@
 //                                                削除される)により他の行が消えていた不具合を修正。
 //                                                対象行の値を書き換えたうえで、必ずテーブルの全行を
 //                                                含めて送信するように変更
+//  V2.3.0     2026/09/16        J.Yamamoto      :calculateScheduledDateTimeがミリ秒付きの
+//                                                ISO文字列を返していたため、kintoneに保存済みの
+//                                                値(ミリ秒無し)と常に不一致になり、無関係な編集でも
+//                                                送信済み/エラーがリセットされ続けていた不具合を修正。
+//                                                ミリ秒無しの形式に統一した
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -146,7 +151,13 @@
         const scheduledDate = new Date(year, month - 1, day, hour, minute, 0, 0);
         scheduledDate.setDate(scheduledDate.getDate() - daysBefore);
 
-        return { value: scheduledDate.toISOString(), error: null };
+        // kintoneの日時フィールドの値はミリ秒無しのISO 8601形式(例: 2026-08-19T12:00:00Z)。
+        // toISOString()が返すミリ秒付きの値のまま保存すると、次回編集時にkintoneから
+        // 読み直した既存値(ミリ秒無し)と再計算後の値(ミリ秒付き)が常に不一致になり、
+        // 実際には変わっていなくても「送信タイミングが変わった」と誤判定してしまう。
+        const scheduledAt = scheduledDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+        return { value: scheduledAt, error: null };
     }
 
     /**
