@@ -8,6 +8,7 @@
 //                                                (ReminderSchedules0行時のエラー等、
 //                                                実機のテーブル初期表示行があると
 //                                                手動確認が難しいケースを自動テストで担保)
+//  V1.3.0     2026/09/16        J.Yamamoto      :hasToRecipientのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのユニットテスト(desktop.test.js)
 //     Description : 「計算処理」セクションの純粋関数を検証する。
@@ -145,6 +146,62 @@ describe('validateRecipients', () => {
     function expectNoRecipientsError() {
         return calc.MSGS.NO_RECIPIENTS;
     }
+});
+
+describe('hasToRecipient', () => {
+    it('区分が「TO」の宛先が1件でもあれば有効とする', () => {
+        const rows = [
+            {
+                value: {
+                    RECIPIENT_CODE: { value: 'U001' },
+                    RECIPIENT_TYPE: { value: 'CC' },
+                },
+            },
+            {
+                value: {
+                    RECIPIENT_CODE: { value: 'U002' },
+                    RECIPIENT_TYPE: { value: 'TO' },
+                },
+            },
+        ];
+        expect(calc.hasToRecipient(rows, 'RECIPIENT_CODE', 'RECIPIENT_TYPE')).toBe(true);
+    });
+
+    it('区分が未入力の行はTO扱いにする(GAS側Mailer.jsの既定動作と合わせるため)', () => {
+        const rows = [{ value: { RECIPIENT_CODE: { value: 'U001' } } }];
+        expect(calc.hasToRecipient(rows, 'RECIPIENT_CODE', 'RECIPIENT_TYPE')).toBe(true);
+    });
+
+    it('送信先が全てCC/BCCの場合は不正とする', () => {
+        const rows = [
+            {
+                value: {
+                    RECIPIENT_CODE: { value: 'U001' },
+                    RECIPIENT_TYPE: { value: 'CC' },
+                },
+            },
+            {
+                value: {
+                    RECIPIENT_CODE: { value: 'U002' },
+                    RECIPIENT_TYPE: { value: 'BCC' },
+                },
+            },
+        ];
+        expect(calc.hasToRecipient(rows, 'RECIPIENT_CODE', 'RECIPIENT_TYPE')).toBe(false);
+    });
+
+    it('送信先コードが空欄の行は区分がTOでも対象にしない', () => {
+        const rows = [
+            { value: { RECIPIENT_CODE: { value: '' }, RECIPIENT_TYPE: { value: 'TO' } } },
+        ];
+        expect(calc.hasToRecipient(rows, 'RECIPIENT_CODE', 'RECIPIENT_TYPE')).toBe(false);
+    });
+
+    it('送信先テーブルが未定義の場合は不正とする', () => {
+        expect(calc.hasToRecipient(undefined, 'RECIPIENT_CODE', 'RECIPIENT_TYPE')).toBe(
+            false,
+        );
+    });
 });
 
 describe('extractRecipientCodes', () => {
@@ -318,6 +375,36 @@ describe('validateAndCalculate', () => {
             RECIPIENTS: { value: [{ value: { RECIPIENT_CODE: { value: '' } } }] },
         };
         expect(() => calc.validateAndCalculate(record)).toThrow(calc.MSGS.NO_RECIPIENTS);
+    });
+
+    it('送信先が全てCC/BCCの場合はエラーを投げる(送信時までTO不足に気付けないのを防ぐ)', () => {
+        const record = {
+            DEADLINE: { value: '2026-09-10' },
+            REMINDER_SCHEDULES: {
+                value: [
+                    {
+                        value: {
+                            DAYS_BEFORE: { value: '3' },
+                            SEND_TIME: { value: '09:00' },
+                            SCHEDULED_SEND_AT: { value: '' },
+                        },
+                    },
+                ],
+            },
+            RECIPIENTS: {
+                value: [
+                    {
+                        value: {
+                            RECIPIENT_CODE: { value: 'U001' },
+                            RECIPIENT_TYPE: { value: 'CC' },
+                        },
+                    },
+                ],
+            },
+        };
+        expect(() => calc.validateAndCalculate(record)).toThrow(
+            calc.MSGS.NO_TO_RECIPIENT,
+        );
     });
 
     it('入力が正しい場合はエラーを投げず、各行のSCHEDULED_SEND_ATを算出する', () => {

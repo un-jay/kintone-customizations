@@ -48,6 +48,10 @@
 //                                                検証(validateAndCalculate)は、テーブルに初期表示行
 //                                                がある実機では手動確認が難しいため、Vitestから
 //                                                テストできるようexportに追加した
+//  V2.6.0     2026/09/16        J.Yamamoto      :送信先が全てCC/BCCでもTO不足に気付かないまま
+//                                                保存でき、送信時までエラーが分からなかったため、
+//                                                保存時点で区分「TO」の宛先が1件以上あるかを
+//                                                検証するように変更(hasToRecipientを追加)
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -119,6 +123,7 @@
     const MSGS = {
         INVALID_DAYS_BEFORE: '「何日前に送るか」には0以上の整数を入力してください。',
         NO_RECIPIENTS: '送信先を1件以上登録してください。',
+        NO_TO_RECIPIENT: '送信先に区分「TO」の宛先を1件以上登録してください。',
         NO_SCHEDULES: '送信タイミング(ReminderSchedules)を1件以上登録してください。',
         PROCESSING_LOCKED: '現在メール送信処理中の行があるため、編集できません。',
         SEND_REQUEST_FAILED: '送信要求の登録に失敗しました。',
@@ -187,6 +192,26 @@
             return { valid: false, error: MSGS.NO_RECIPIENTS };
         }
         return { valid: true, error: null };
+    }
+
+    /**
+     * 送信先テーブルに、区分「TO」の宛先が1件以上あるかを判定する。
+     * 送信区分が未入力の行はTO扱いにする(GAS側Mailer.jsの既定動作と合わせるため)。
+     * 送信先が全てCC/BCCの場合、GAS送信時に「エラー」行になるまで気付けないため、
+     * 保存時点で検知できるようにする。
+     * @param {Array<Object>} recipientRows      - Recipientsテーブルのvalue配列
+     * @param {string}        recipientCodeField - 送信先コードのフィールドコード
+     * @param {string}        recipientTypeField - 送信区分のフィールドコード
+     * @returns {boolean}
+     */
+    function hasToRecipient(recipientRows, recipientCodeField, recipientTypeField) {
+        return (recipientRows || []).some((row) => {
+            if (!row.value[recipientCodeField]?.value) {
+                return false;
+            }
+            const type = row.value[recipientTypeField]?.value;
+            return !type || type === 'TO';
+        });
     }
 
     /**
@@ -481,6 +506,15 @@
         if (!recipientCheck.valid) {
             throw new Error(recipientCheck.error);
         }
+        if (
+            !hasToRecipient(
+                record[FIELD.RECIPIENTS].value,
+                FIELD.RECIPIENT_CODE,
+                FIELD.RECIPIENT_TYPE,
+            )
+        ) {
+            throw new Error(MSGS.NO_TO_RECIPIENT);
+        }
     }
 
     kintone.events.on('app.record.create.submit', (event) => {
@@ -631,6 +665,7 @@
         module.exports = {
             calculateScheduledDateTime,
             validateRecipients,
+            hasToRecipient,
             extractRecipientCodes,
             buildRecipientDisplayNames,
             pickUnsentScheduleRows,
