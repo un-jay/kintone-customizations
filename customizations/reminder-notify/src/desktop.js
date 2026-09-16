@@ -44,6 +44,10 @@
 //                                                誤判定して送信済み/エラーがリセットされない不具合を
 //                                                修正。以前の値がまだ残っているchangeイベント発火時点
 //                                                (recalculateScheduleRow)でリセット判定するように変更
+//  V2.5.0     2026/09/16        J.Yamamoto      :ReminderSchedulesが0行の場合に保存エラーになる
+//                                                検証(validateAndCalculate)は、テーブルに初期表示行
+//                                                がある実機では手動確認が難しいため、Vitestから
+//                                                テストできるようexportに追加した
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -632,6 +636,7 @@
             pickUnsentScheduleRows,
             buildScheduleDisplayLabels,
             shouldResetSendStatus,
+            validateAndCalculate,
             MSGS,
         };
     }

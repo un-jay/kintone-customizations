@@ -4,6 +4,10 @@
 //  V1.1.0     2026/09/13        J.Yamamoto      :ReminderSchedulesテーブル対応に伴い、
 //                                                pickUnsentScheduleRows/
 //                                                buildScheduleDisplayLabelsのテストを追加
+//  V1.2.0     2026/09/16        J.Yamamoto      :validateAndCalculateのテストを追加
+//                                                (ReminderSchedules0行時のエラー等、
+//                                                実機のテーブル初期表示行があると
+//                                                手動確認が難しいケースを自動テストで担保)
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのユニットテスト(desktop.test.js)
 //     Description : 「計算処理」セクションの純粋関数を検証する。
@@ -284,5 +288,54 @@ describe('shouldResetSendStatus', () => {
                 '2026-09-05T00:00:00.000Z',
             ),
         ).toBe(false);
+    });
+});
+
+describe('validateAndCalculate', () => {
+    it('ReminderSchedulesが0行の場合はエラーを投げる(実機ではテーブルに初期表示行があり手動確認が難しいケース)', () => {
+        const record = {
+            DEADLINE: { value: '2026-09-10' },
+            REMINDER_SCHEDULES: { value: [] },
+            RECIPIENTS: { value: [{ value: { RECIPIENT_CODE: { value: 'U001' } } }] },
+        };
+        expect(() => calc.validateAndCalculate(record)).toThrow(calc.MSGS.NO_SCHEDULES);
+    });
+
+    it('送信先に有効なコードが1件も無い場合はエラーを投げる', () => {
+        const record = {
+            DEADLINE: { value: '2026-09-10' },
+            REMINDER_SCHEDULES: {
+                value: [
+                    {
+                        value: {
+                            DAYS_BEFORE: { value: '3' },
+                            SEND_TIME: { value: '09:00' },
+                            SCHEDULED_SEND_AT: { value: '' },
+                        },
+                    },
+                ],
+            },
+            RECIPIENTS: { value: [{ value: { RECIPIENT_CODE: { value: '' } } }] },
+        };
+        expect(() => calc.validateAndCalculate(record)).toThrow(calc.MSGS.NO_RECIPIENTS);
+    });
+
+    it('入力が正しい場合はエラーを投げず、各行のSCHEDULED_SEND_ATを算出する', () => {
+        const row = {
+            value: {
+                DAYS_BEFORE: { value: '3' },
+                SEND_TIME: { value: '09:00' },
+                SCHEDULED_SEND_AT: { value: '' },
+            },
+        };
+        const record = {
+            DEADLINE: { value: '2026-09-10' },
+            REMINDER_SCHEDULES: { value: [row] },
+            RECIPIENTS: { value: [{ value: { RECIPIENT_CODE: { value: 'U001' } } }] },
+        };
+        expect(() => calc.validateAndCalculate(record)).not.toThrow();
+        expect(row.value.SCHEDULED_SEND_AT.value).toMatch(
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+        );
     });
 });
