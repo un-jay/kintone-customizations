@@ -124,6 +124,33 @@ GASの「プロジェクトの設定」→「スクリプト プロパティ」�
 4. メール受信を確認する
 5. 対象行の `SEND_STATUS` が「送信済み」、`SENT_AT` が送信日時、`SEND_COUNT` が加算されていることを確認する
 6. `ADMIN_NOTIFY_EMAIL` を設定した場合は、管理者通知メールも一度動作確認しておく。`KINTONE_API_TOKEN` を一時的に別の文字列へ書き換えてから `runReminderCheck` を実行し、`ADMIN_NOTIFY_EMAIL` 宛にエラー通知メールが届くことを確認する。確認後は `KINTONE_API_TOKEN` を元の値に戻すこと
+7. 「送信処理中のまま行がスタックする」ケースの通知も確認しておく。**kintone画面から`SEND_STATUS`を「送信処理中」へ手動で変更しようとしても、`app.record.edit.submit`の正規のガード（「現在メール送信処理中の行があるため、編集できません」）に阻まれて保存できない**（実際のスタックはkintone画面の操作ではなくGAS自身のAPI更新が中断されて起きるため、この経路を塞いでいるのは正しい動作）。そのため、GASエディタで以下のような一時テスト関数を作成し、APIから直接書き換えて再現する（確認後、この関数は削除してよい）。
+
+    ```js
+    function TEST_simulateStuckRow() {
+        const config = loadConfig();
+        const recordId = 123; // 対象レコードのID
+        const scheduleRowId = 456; // 対象行のID(REMINDER_SCHEDULESの行id)
+
+        const res = UrlFetchApp.fetch(
+            `https://${config.subdomain}.cybozu.com/k/v1/record.json?app=${config.appId}&id=${recordId}`,
+            { headers: { 'X-Cybozu-API-Token': config.apiToken } },
+        );
+        const record = JSON.parse(res.getContentText()).record;
+        const scheduleRows = record[config.fields.SCHEDULES].value;
+
+        updateScheduleRow(
+            config,
+            recordId,
+            record.$revision.value,
+            scheduleRows,
+            scheduleRowId,
+            { SEND_STATUS: STATUS.PROCESSING },
+        );
+    }
+    ```
+
+    実行後に `runReminderCheck` を実行し、その行が送信対象にならず「処理が中断された可能性がある行」として通知されることを確認する。確認後は、対象行の送信状態をkintone画面から手動で戻す（他の行が処理中でなければ通常通り編集できる）
 
 ## 9. 自動実行のトリガー設定
 
