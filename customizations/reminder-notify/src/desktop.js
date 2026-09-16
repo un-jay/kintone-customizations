@@ -37,6 +37,13 @@
 //                                                値(ミリ秒無し)と常に不一致になり、無関係な編集でも
 //                                                送信済み/エラーがリセットされ続けていた不具合を修正。
 //                                                ミリ秒無しの形式に統一した
+//  V2.4.0     2026/09/16        J.Yamamoto      :納期変更時、change イベントで先に全行の
+//                                                SCHEDULED_SEND_ATを再計算していたため、
+//                                                edit.submit側で読む「以前の値」が既に新しい値に
+//                                                なっており、実際は変わっているのに「変化なし」と
+//                                                誤判定して送信済み/エラーがリセットされない不具合を
+//                                                修正。以前の値がまだ残っているchangeイベント発火時点
+//                                                (recalculateScheduleRow)でリセット判定するように変更
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -367,6 +374,38 @@
     // イベント登録のみを行う(計算処理→API処理→UI処理の呼び出し)。
     // ==========================
 
+    /**
+     * 行の送信予定日時を再計算し、必要なら送信ステータスをリセットする。
+     * 「以前の値」はこの関数が呼ばれた時点(＝実際に値が変わった瞬間)のrow.valueから
+     * 読む必要がある。edit.submit側で改めて読み直すと、change時点で既にこの関数が
+     * 上書き済みの新しい値を「以前の値」として読んでしまい、常に「変化なし」と
+     * 誤判定してしまう(過去に実際に発生した不具合)。
+     * @param {Object} row      - ReminderSchedulesの1行
+     * @param {string} deadline - 納期
+     * @returns {string|null} 算出エラーがあればそのメッセージ、無ければnull
+     */
+    function recalculateScheduleRow(row, deadline) {
+        const previousScheduledAt = row.value[FIELD.SCHEDULED_AT].value;
+        const result = calculateScheduledDateTime({
+            deadline,
+            daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
+            sendTime: row.value[FIELD.SEND_TIME].value,
+        });
+        if (result.error) {
+            return result.error;
+        }
+        row.value[FIELD.SCHEDULED_AT].value = result.value;
+
+        const status = row.value[FIELD.SEND_STATUS].value;
+        if (shouldResetSendStatus(status, previousScheduledAt, result.value)) {
+            row.value[FIELD.SEND_STATUS].value = STATUS.UNSENT;
+            row.value[FIELD.SEND_REQUEST].value = [];
+            row.value[FIELD.SENT_AT].value = '';
+            row.value[FIELD.ERROR_MESSAGE].value = '';
+        }
+        return null;
+    }
+
     /** 納期の変更: ReminderSchedulesの全行を再計算する */
     kintone.events.on(
         [
@@ -379,16 +418,11 @@
             const scheduleRows = record[FIELD.SCHEDULES].value;
 
             for (const row of scheduleRows) {
-                const result = calculateScheduledDateTime({
-                    deadline,
-                    daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
-                    sendTime: row.value[FIELD.SEND_TIME].value,
-                });
-                if (result.error) {
-                    event.error = result.error;
+                const error = recalculateScheduleRow(row, deadline);
+                if (error) {
+                    event.error = error;
                     return event;
                 }
-                row.value[FIELD.SCHEDULED_AT].value = result.value;
             }
             return event;
         },
@@ -406,16 +440,11 @@
                 return event;
             }
 
-            const result = calculateScheduledDateTime({
-                deadline: event.record[FIELD.DEADLINE].value,
-                daysBeforeText: row.value[FIELD.DAYS_BEFORE].value,
-                sendTime: row.value[FIELD.SEND_TIME].value,
-            });
-            if (result.error) {
-                event.error = result.error;
+            const error = recalculateScheduleRow(row, event.record[FIELD.DEADLINE].value);
+            if (error) {
+                event.error = error;
                 return event;
             }
-            row.value[FIELD.SCHEDULED_AT].value = result.value;
             return event;
         },
     );
