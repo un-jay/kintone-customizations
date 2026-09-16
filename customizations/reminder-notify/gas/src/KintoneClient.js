@@ -30,6 +30,12 @@
 //                                                対応へ変更。updateRecordを廃止し、テーブルの
 //                                                特定行だけを更新するupdateScheduleRowを追加
 //                                                (更新後のrevisionはレスポンスから取得する)
+//  V2.1.0     2026/09/16        J.Yamamoto      :updateScheduleRowが対象行だけをPUTしていたため、
+//                                                kintone REST APIの仕様(テーブル更新時、
+//                                                リクエストに含めない行は削除される)により、
+//                                                他の行が消える/idが変わって次の更新が失敗する
+//                                                不具合を修正。テーブルの全行を受け取り、対象行の
+//                                                値だけをその場で書き換えたうえで全行を送信する
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -123,23 +129,48 @@ function fetchTargetRecords(config, nowIso) {
 }
 
 /**
- * ReminderSchedulesテーブルの特定の1行だけを更新する。
- * 行はidで指定するため、同じレコード内の他の行・他のフィールドには影響しない。
+ * ReminderSchedulesテーブルの特定の1行を更新する。
+ *
+ * 【重要】kintone REST APIはテーブルフィールドを指定して更新する場合、リクエストに
+ * 含めなかった行を削除する仕様(公式ドキュメント「テーブルを更新するとき」を参照)。
+ * そのため対象行だけを送ってはならず、必ずscheduleRowsの全行を含めて送信する。
+ * 対象行(scheduleRowId)の値は、このテーブル配列自体を直接書き換えたうえで送信するため、
+ * 呼び出し側が同じscheduleRows配列を使い回せば、複数行を続けて更新しても
+ * 直前までの更新内容が失われない。
  * @param {Object}        config
  * @param {string|number} recordId
  * @param {string}        revision
+ * @param {Array<Object>} scheduleRows  - REMINDER_SCHEDULESテーブルの全行(id/valueを
+ *                                        含む行オブジェクト。呼び出し元と共有し、
+ *                                        この関数が対象行を直接書き換える)
  * @param {string|number} scheduleRowId - 更新対象行の$id(テーブル行のid)
  * @param {Object}        fieldValues   - { フィールドコード: 値 } の形式(行内のフィールド。
  *                                        kintoneの{value:...}形式ではない)
  * @returns {string} 更新後のrevision(レスポンスの値をそのまま使う。呼び出し側で
  *                   +1のような手動計算をしないことで、連続更新時のずれを防ぐ)
  */
-function updateScheduleRow(config, recordId, revision, scheduleRowId, fieldValues) {
+function updateScheduleRow(
+    config,
+    recordId,
+    revision,
+    scheduleRows,
+    scheduleRowId,
+    fieldValues,
+) {
     const F = config.fields;
-    const rowValue = {};
+    const targetRow = scheduleRows.find(
+        (row) => String(row.id) === String(scheduleRowId),
+    );
+    if (!targetRow) {
+        throw new Error(
+            `対象行が見つかりません(recordId=${recordId}, scheduleRowId=${scheduleRowId})`,
+        );
+    }
     Object.entries(fieldValues).forEach(([fieldCode, value]) => {
-        rowValue[fieldCode] = { value };
+        targetRow.value[fieldCode] = { value };
     });
+
+    const tableValue = scheduleRows.map((row) => ({ id: row.id, value: row.value }));
 
     const response = UrlFetchApp.fetch(`${buildBaseUrl(config)}/k/v1/record.json`, {
         method: 'put',
@@ -153,9 +184,7 @@ function updateScheduleRow(config, recordId, revision, scheduleRowId, fieldValue
             id: recordId,
             revision,
             record: {
-                [F.SCHEDULES]: {
-                    value: [{ id: String(scheduleRowId), value: rowValue }],
-                },
+                [F.SCHEDULES]: { value: tableValue },
             },
         }),
     });

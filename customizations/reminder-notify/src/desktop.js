@@ -27,6 +27,11 @@
 //                                                履歴消失や意図しない再送信が起きうる不具合を修正。
 //                                                その行の送信予定日時が実際に変わった場合のみ
 //                                                未送信へ戻すように変更
+//  V2.2.0     2026/09/16        J.Yamamoto      :「今すぐメール送信」で対象行のみをPUTしていたため、
+//                                                kintone REST APIの仕様(リクエストに含めない行は
+//                                                削除される)により他の行が消えていた不具合を修正。
+//                                                対象行の値を書き換えたうえで、必ずテーブルの全行を
+//                                                含めて送信するように変更
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : リマインド通知カスタマイズの全処理をまとめたファイル。
@@ -245,13 +250,16 @@
     // ==========================
 
     /**
-     * ReminderSchedulesの指定行をまとめて即時送信要求へ更新する。
-     * 行はidで指定するため、他の行・他のフィールドには影響しない。
+     * ReminderSchedulesテーブル全体を書き込む。
+     * kintone REST APIはテーブルフィールドを指定すると、リクエストに含まれない行を
+     * 削除する仕様のため、対象行だけでなく必ずテーブルの全行を含めて送信すること。
      * @param {Object} params
      * @param {number} params.appId
      * @param {number} params.recordId
      * @param {string} params.revision
-     * @param {Array<Object>} params.scheduleRows - 対象行(id/valueを含む元の行オブジェクト)
+     * @param {Array<Object>} params.scheduleRows - REMINDER_SCHEDULESテーブルの全行
+     *        (id/valueを含む元の行オブジェクト。呼び出し側で更新したい行のvalueを
+     *        あらかじめ書き換えてから渡すこと)
      * @returns {Promise<Object>} kintone REST APIのレスポンス
      */
     async function requestImmediateSend({ appId, recordId, revision, scheduleRows }) {
@@ -260,16 +268,7 @@
             id: recordId,
             revision,
             record: {
-                [FIELD.SCHEDULES]: {
-                    value: scheduleRows.map((row) => ({
-                        id: row.id,
-                        value: {
-                            [FIELD.SEND_REQUEST]: { value: [SEND_REQUEST_VALUE] },
-                            [FIELD.SEND_STATUS]: { value: STATUS.UNSENT },
-                            [FIELD.ERROR_MESSAGE]: { value: '' },
-                        },
-                    })),
-                },
+                [FIELD.SCHEDULES]: { value: scheduleRows },
             },
         };
 
@@ -543,11 +542,20 @@
 
             setButtonSending(button);
             try {
+                // unsentRowsはscheduleRows(テーブル全行)と同じ行オブジェクトを参照しているため、
+                // ここで値を書き換えると、下のscheduleRowsにもそのまま反映される。
+                // kintone REST APIはテーブル更新時にリクエストへ含めなかった行を削除するため、
+                // 対象行だけでなく必ずテーブルの全行(scheduleRows)を送信する。
+                unsentRows.forEach((row) => {
+                    row.value[FIELD.SEND_REQUEST].value = [SEND_REQUEST_VALUE];
+                    row.value[FIELD.SEND_STATUS].value = STATUS.UNSENT;
+                    row.value[FIELD.ERROR_MESSAGE].value = '';
+                });
                 await requestImmediateSend({
                     appId: kintone.app.getId(),
                     recordId: kintone.app.record.getId(),
                     revision: record.$revision.value,
-                    scheduleRows: unsentRows,
+                    scheduleRows,
                 });
                 notify(UI.NOTIFY_SUCCESS, 'SUCCESS');
                 // 通知を読めるように少し待ってからリロードする。

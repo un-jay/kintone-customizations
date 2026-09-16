@@ -9,6 +9,11 @@
 //                                                送信対象を判定・処理するように変更
 //                                                (pickDueScheduleRows/buildMailRecordViewを追加)。
 //                                                エラーメッセージへタイムスタンプを付与
+//  V2.1.0     2026/09/16        J.Yamamoto      :updateScheduleRow(KintoneClient.js)の
+//                                                シグネチャ変更(テーブル全行を渡す)に追従。
+//                                                同じレコード内に複数の送信対象行がある場合、
+//                                                1行目の更新で2行目以降が消えて2通目以降が
+//                                                送信されなくなっていた不具合を修正
 // ----------------------------------------------------------------------
 //     ModuleName  : リマインド送信処理(ReminderService.js)
 //     Description : 対象レコードの抽出→送信→結果書き戻しを行う業務ロジック。
@@ -52,6 +57,7 @@ function processReminders(config) {
                 recordId,
                 revision,
                 record,
+                scheduleRows,
                 scheduleRow,
                 nowIso,
             );
@@ -135,15 +141,27 @@ function formatErrorMessage(error) {
 
 /**
  * ReminderSchedulesの1行を処理する(処理中に更新→送信→結果書き戻し)。
+ * updateScheduleRowにはテーブルの全行(scheduleRows)を渡す。同じレコード内で
+ * 複数行を続けて処理する場合、直前までの更新がscheduleRows自体に反映されているため、
+ * 後続の行を更新しても前の行の結果を上書き・消失させない。
  * @param {Object}        config
  * @param {string|number} recordId
  * @param {string}        revision      - 処理開始時点のレコードrevision
  * @param {Object}        record        - kintoneレコード
- * @param {Object}        scheduleRow   - 送信対象のReminderSchedules行
+ * @param {Array<Object>} scheduleRows  - REMINDER_SCHEDULESテーブルの全行
+ * @param {Object}        scheduleRow   - 送信対象の行(scheduleRowsに含まれる要素)
  * @param {string}        nowIso
  * @returns {{revision: string, succeeded: boolean}} 更新後のrevisionと成否
  */
-function processOneSchedule(config, recordId, revision, record, scheduleRow, nowIso) {
+function processOneSchedule(
+    config,
+    recordId,
+    revision,
+    record,
+    scheduleRows,
+    scheduleRow,
+    nowIso,
+) {
     const F = config.fields;
     const scheduleRowId = scheduleRow.id;
     let currentRevision = revision;
@@ -153,6 +171,7 @@ function processOneSchedule(config, recordId, revision, record, scheduleRow, now
             config,
             recordId,
             currentRevision,
+            scheduleRows,
             scheduleRowId,
             { [F.SEND_STATUS]: STATUS.PROCESSING },
         );
@@ -164,6 +183,7 @@ function processOneSchedule(config, recordId, revision, record, scheduleRow, now
             config,
             recordId,
             currentRevision,
+            scheduleRows,
             scheduleRowId,
             {
                 [F.SEND_STATUS]: STATUS.SENT,
@@ -183,6 +203,7 @@ function processOneSchedule(config, recordId, revision, record, scheduleRow, now
                 config,
                 recordId,
                 currentRevision,
+                scheduleRows,
                 scheduleRowId,
                 {
                     [F.SEND_STATUS]: STATUS.ERROR,
