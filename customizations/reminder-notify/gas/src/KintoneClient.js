@@ -36,6 +36,12 @@
 //                                                他の行が消える/idが変わって次の更新が失敗する
 //                                                不具合を修正。テーブルの全行を受け取り、対象行の
 //                                                値だけをその場で書き換えたうえで全行を送信する
+//  V2.2.0     2026/09/16        J.Yamamoto      :fetchTargetRecordsのクエリに
+//                                                「SEND_STATUS=送信処理中」の行も対象として
+//                                                追加。GASの実行時間上限超過等で処理が中断され
+//                                                「送信処理中」のまま残った行を、追加のAPI
+//                                                リクエスト無しで次回実行時に検出できるようにする
+//                                                (ReminderService.jsのpickStuckProcessingRows)
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -72,15 +78,18 @@ function buildAuthHeader(config) {
 
 /**
  * 送信対象の候補レコードを取得する。
- * 条件: (送信ステータス=未送信 かつ 送信予定日時<=現在時刻) または 即時送信要求あり。
+ * 条件: (送信ステータス=未送信 かつ 送信予定日時<=現在時刻) または 即時送信要求あり
+ * または 送信ステータス=送信処理中(前回以前の実行が中断され、書き戻せずに残っている
+ * 可能性がある行を検出するため。追加のAPIリクエスト無しでこのクエリに相乗りさせる)。
  * これらはReminderSchedulesテーブル内のフィールドだが、フィールドコードはアプリ内で
  * 一意なためテーブル名を付けず直接参照できる。
  *
  * 【重要】kintoneのクエリは、サブテーブル内の複数フィールド条件をANDで組み合わせても
  * 「同じ行が両方の条件を満たす」ことまでは保証しない(別々の行がそれぞれの条件を
  * 満たしていてもレコードとしてヒットしうる)。そのためこのクエリは「候補レコードの
- * 粗い絞り込み」に過ぎない。実際にどの行が送信対象かは、取得後に
- * pickDueScheduleRows(ReminderService.js)で行単位に再判定する。
+ * 粗い絞り込み」に過ぎない。実際にどの行が送信対象か・処理中のまま残っているかは、
+ * 取得後にpickDueScheduleRows/pickStuckProcessingRows(ReminderService.js)で
+ * 行単位に再判定する。
  *
  * 501件目以降は$id昇順のseek法で取得する(kintone REST APIの1回あたり取得上限が500件のため)。
  * @param {Object} config
@@ -91,7 +100,7 @@ function fetchTargetRecords(config, nowIso) {
     const F = config.fields;
     // SEND_STATUSは文字列(1行)・ドロップダウンどちらで作成されていても動くよう、
     // (ドロップダウンは=/!=が使えずin/not inのみのため) in演算子で統一する。
-    // かっこの入れ子は1階層までとし($id > X の絞り込みを両方のor分岐にそれぞれ分配する)、
+    // かっこの入れ子は1階層までとし($id > X の絞り込みを各or分岐にそれぞれ分配する)、
     // 公式ドキュメントのグループ化例(a) or (b)と同じ深さに揃える。
 
     const records = [];
@@ -101,6 +110,7 @@ function fetchTargetRecords(config, nowIso) {
         const seekQuery =
             `(${F.SEND_STATUS} in ("${STATUS.UNSENT}") and ${F.SCHEDULED_AT} <= "${nowIso}" and $id > ${lastId}) ` +
             `or (${F.SEND_REQUEST} in ("${SEND_REQUEST_VALUE}") and $id > ${lastId}) ` +
+            `or (${F.SEND_STATUS} in ("${STATUS.PROCESSING}") and $id > ${lastId}) ` +
             `order by $id asc limit ${RECORDS_PER_REQUEST}`;
         const url =
             `${buildBaseUrl(config)}/k/v1/records.json` +

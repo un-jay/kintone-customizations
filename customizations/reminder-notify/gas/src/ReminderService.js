@@ -14,6 +14,17 @@
 //                                                同じレコード内に複数の送信対象行がある場合、
 //                                                1行目の更新で2行目以降が消えて2通目以降が
 //                                                送信されなくなっていた不具合を修正
+//  V2.2.0     2026/09/16        J.Yamamoto      :エラー状態への書き戻し自体が失敗した場合、
+//                                                行が「送信処理中」等のまま無言でスタックし、
+//                                                顧客側はkintone上で気付く手段が無かったため、
+//                                                notifyAdminOnFailureで管理者へメール通知
+//                                                するように変更
+//  V2.3.0     2026/09/16        J.Yamamoto      :GASの実行時間上限超過等で処理が中断され、
+//                                                行が「送信処理中」のまま残るケース
+//                                                (例外を伴わないため従来は検知不能)を、
+//                                                次回実行時に検出して管理者へ通知するよう
+//                                                pickStuckProcessingRowsを追加。
+//                                                KintoneClient.jsのクエリに合わせて対応
 // ----------------------------------------------------------------------
 //     ModuleName  : リマインド送信処理(ReminderService.js)
 //     Description : 対象レコードの抽出→送信→結果書き戻しを行う業務ロジック。
@@ -37,11 +48,21 @@ function processReminders(config) {
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    const stuckRowLabels = [];
 
     candidateRecords.forEach((record) => {
         const recordId = record.$id.value;
         let revision = record.$revision.value;
         const scheduleRows = record[F.SCHEDULES]?.value || [];
+
+        // fetchTargetRecordsで取得した時点(=今回の処理を始める前)のスナップショットに
+        // 「送信処理中」の行が残っているのは、前回以前の実行がGASの実行時間上限超過等で
+        // 中断され、書き戻しが行われなかった証拠(正常時は同じ実行内で必ずSENT/ERRORへ
+        // 解消される)。この段階では例外を伴わないため、検出しない限り気付く手段が無い。
+        pickStuckProcessingRows(scheduleRows, F, STATUS.PROCESSING).forEach((row) => {
+            stuckRowLabels.push(`レコードid=${recordId} 行id=${row.id}`);
+        });
+
         const dueRows = pickDueScheduleRows(
             scheduleRows,
             F,
@@ -70,7 +91,37 @@ function processReminders(config) {
         });
     });
 
-    return { processed, succeeded, failed };
+    if (stuckRowLabels.length > 0) {
+        notifyAdminOnFailure(
+            config,
+            'リマインドチェック処理',
+            new Error(
+                `前回以前の実行が中断され、「送信処理中」のまま残っていると見られる行が` +
+                    `${stuckRowLabels.length}件あります: ${stuckRowLabels.join(', ')}。` +
+                    '実際にメールが送信済みか受信箱を確認したうえで、kintoneの管理者権限で' +
+                    '該当行のSEND_STATUSを手動で修正してください(二重送信防止のため自動では復旧しません)。',
+            ),
+        );
+    }
+
+    return { processed, succeeded, failed, stuck: stuckRowLabels.length };
+}
+
+/**
+ * ReminderSchedulesの行から、前回以前の実行で処理が中断されたと推定される行
+ * (SEND_STATUS=送信処理中のまま残っている行)を抽出する。
+ * 呼び出しは、今回のfetchTargetRecordsで取得した時点のスナップショットに対してのみ
+ * 行うこと。今回の実行が自分自身でPROCESSINGへ更新した行は、この判定より後に
+ * scheduleRows配列をその場で書き換えるため、ここでは混同されない。
+ * @param {Array<Object>} scheduleRows      - ReminderSchedulesテーブルのvalue配列
+ * @param {Object}        fields            - フィールドコード定数(config.fields)
+ * @param {string}        processingStatus  - 「送信処理中」を表すSEND_STATUSの値
+ * @returns {Array<Object>} 中断されたと推定される行配列
+ */
+function pickStuckProcessingRows(scheduleRows, fields, processingStatus) {
+    return (scheduleRows || []).filter(
+        (row) => row.value[fields.SEND_STATUS]?.value === processingStatus,
+    );
 }
 
 /**
@@ -214,6 +265,14 @@ function processOneSchedule(
             Logger.log(
                 `レコードid=${recordId} 行id=${scheduleRowId}のエラー状態書き戻しにも失敗しました: ${updateError.message}`,
             );
+            // 書き戻し自体が失敗すると、この行は「送信処理中」等のまま無言でスタックし、
+            // kintone上には何のエラーも表示されない(顧客側が気付く手段が無い)ため、
+            // 個々の行のERROR_MESSAGEの代わりに管理者へメール通知する。
+            notifyAdminOnFailure(
+                config,
+                `レコードid=${recordId} 行id=${scheduleRowId}のエラー状態書き戻し`,
+                updateError,
+            );
         }
         return { revision: currentRevision, succeeded: false };
     }
@@ -222,5 +281,9 @@ function processOneSchedule(
 // Vitestからのテスト用に、副作用を持たない関数のみをCommonJS export経由で公開する。
 // GAS実行時はmoduleが存在しないため、このブロックは実行されない。
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { pickDueScheduleRows, buildMailRecordView };
+    module.exports = {
+        pickDueScheduleRows,
+        buildMailRecordView,
+        pickStuckProcessingRows,
+    };
 }

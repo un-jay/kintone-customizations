@@ -1,16 +1,18 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/13        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/16        J.Yamamoto      :pickStuckProcessingRowsのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : ReminderService.jsのユニットテスト(ReminderService.test.js)
-//     Description : pickDueScheduleRows/buildMailRecordView
+//     Description : pickDueScheduleRows/buildMailRecordView/pickStuckProcessingRows
 //                   (いずれも副作用を持たない純粋関数)を検証する。
 // ======================================================================
 
 import { describe, expect, it } from 'vitest';
 import ReminderService from '../src/ReminderService.js';
 
-const { pickDueScheduleRows, buildMailRecordView } = ReminderService;
+const { pickDueScheduleRows, buildMailRecordView, pickStuckProcessingRows } =
+    ReminderService;
 
 const FIELDS = {
     SEND_STATUS: 'SEND_STATUS',
@@ -100,6 +102,45 @@ describe('pickDueScheduleRows', () => {
         expect(
             pickDueScheduleRows(undefined, FIELDS, '未送信', '即時送信', NOW_ISO),
         ).toEqual([]);
+    });
+});
+
+describe('pickStuckProcessingRows', () => {
+    it('送信処理中の行を抽出する(前回以前の実行が中断され残っていると推定される行)', () => {
+        const rows = [
+            scheduleRow({
+                id: '1',
+                status: '未送信',
+                scheduledAt: '2026-09-12T00:00:00Z',
+            }),
+            scheduleRow({
+                id: '2',
+                status: '送信処理中',
+                scheduledAt: '2026-09-12T00:00:00Z',
+            }),
+        ];
+        const result = pickStuckProcessingRows(rows, FIELDS, '送信処理中');
+        expect(result.map((row) => row.id)).toEqual(['2']);
+    });
+
+    it('送信処理中の行が無ければ空配列を返す', () => {
+        const rows = [
+            scheduleRow({
+                id: '1',
+                status: '未送信',
+                scheduledAt: '2026-09-12T00:00:00Z',
+            }),
+            scheduleRow({
+                id: '2',
+                status: '送信済み',
+                scheduledAt: '2026-09-12T00:00:00Z',
+            }),
+        ];
+        expect(pickStuckProcessingRows(rows, FIELDS, '送信処理中')).toEqual([]);
+    });
+
+    it('行が未定義の場合は空配列を返す', () => {
+        expect(pickStuckProcessingRows(undefined, FIELDS, '送信処理中')).toEqual([]);
     });
 });
 

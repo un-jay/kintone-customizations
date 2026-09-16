@@ -6,6 +6,11 @@
 //  V1.2.0     2026/09/13        J.Yamamoto      :1レコード1タイミングだった送信予定日時を、
 //                                                ReminderSchedulesテーブルによる複数タイミング
 //                                                対応へ変更(SCHEDULESキーを追加)
+//  V1.3.0     2026/09/16        J.Yamamoto      :認証失敗等、個々の行に紐付かない
+//                                                システム全体のエラーを管理者へメール通知
+//                                                できるよう、任意のADMIN_NOTIFY_EMAILを
+//                                                読み込むように追加(Mailer.jsのnotifyAdmin
+//                                                OnFailureが使用)。未設定でも動作する
 // ----------------------------------------------------------------------
 //     ModuleName  : 設定読み込み(Config.js)
 //     Description : スクリプトプロパティ(PropertiesService)から機密情報を読み込む。
@@ -74,6 +79,9 @@ function loadConfig() {
         subdomain: props.KINTONE_SUBDOMAIN,
         apiToken: props.KINTONE_API_TOKEN,
         appId: props.KINTONE_APP_ID,
+        // 任意設定。システム全体に影響するエラー(認証失敗等)の通知先。
+        // 未設定でも動作するが、その場合はGASの実行ログでしか気付けなくなる。
+        adminNotifyEmail: props.ADMIN_NOTIFY_EMAIL || '',
         fields: FIELD,
     };
 }
