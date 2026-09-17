@@ -10,6 +10,7 @@ kintone の JavaScript カスタマイズ・プラグインをまとめたポー
 | [`plugins/code-reader`](./plugins/code-reader)                                                                   | QRコード（[jsQR](https://github.com/cozmo/jsQR)）・各種バーコード（[Quagga2](https://github.com/ericblade/quagga2)）をカメラで読み取り、指定フィールドへ書き込むkintoneプラグイン |
 | [`plugins/code-reader/examples/start-completion-sample`](./plugins/code-reader/examples/start-completion-sample) | `code-reader` プラグインを利用した「着手/完了打刻」カスタマイズの実装例                                                                                                           |
 | [`customizations/reminder-notify`](./customizations/reminder-notify)                                             | 期日から算出した送信予定日時になると、Google Apps Script経由でリマインドメールを自動送信するkintoneカスタマイズ + GAS                                                             |
+| [`customizations/handwriting-input`](./customizations/handwriting-input)                                         | 紙に手書きされたメモを撮影し、Azure AI Vision経由で文字起こししてフィールドへ転記するkintoneカスタマイズ + GAS                                                                    |
 
 ## 技術スタック
 

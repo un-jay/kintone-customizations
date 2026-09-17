@@ -1,0 +1,136 @@
+/* ======================================================================
+    Version    作成日(更新日)    更新者          :更新内容
+    V1.0.0     2026/09/17        J.Yamamoto      :新規作成
+   ----------------------------------------------------------------------
+        ModuleName  : メインスタイル(desktop.css)
+        Description : 手書き読み取りオーバーレイのスタイル。現場のタブレットで
+                      操作することを想定し、ボタン・文字を大きめにしている。
+   ====================================================================== */
+
+.handwriting-input-trigger-button {
+    display: inline-block;
+    margin: 4px 0;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+    background-color: #3498db;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.handwriting-input-trigger-button:hover {
+    background-color: #2f89c5;
+}
+
+.handwriting-input-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    background-color: #fafafa;
+}
+
+.handwriting-input-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background-color: #2c3e50;
+    color: #fff;
+}
+
+.handwriting-input-title {
+    margin: 0;
+    font-size: 18px;
+}
+
+.handwriting-input-close-button {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    color: #fff;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.handwriting-input-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.handwriting-input-preview {
+    max-width: 100%;
+    max-height: 40vh;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.handwriting-input-status {
+    margin: 0;
+    font-size: 15px;
+    color: #555;
+    min-height: 1.4em;
+}
+
+.handwriting-input-preview-label {
+    align-self: flex-start;
+    font-size: 14px;
+    color: #555;
+}
+
+.handwriting-input-textarea {
+    width: 100%;
+    min-height: 160px;
+    padding: 12px;
+    font-size: 16px;
+    line-height: 1.6;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.handwriting-input-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    background-color: #fff;
+    border-top: 1px solid #ddd;
+}
+
+.handwriting-input-primary-button,
+.handwriting-input-secondary-button {
+    min-width: 140px;
+    padding: 14px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.handwriting-input-primary-button {
+    color: #fff;
+    background-color: #3498db;
+    border: none;
+}
+
+.handwriting-input-primary-button:disabled {
+    background-color: #a9c8e0;
+    cursor: not-allowed;
+}
+
+.handwriting-input-secondary-button {
+    color: #555;
+    background-color: #fff;
+    border: 1px solid #ccc;
+}
