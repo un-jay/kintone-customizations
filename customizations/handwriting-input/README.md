@@ -48,9 +48,14 @@ sequenceDiagram
     GAS-->>Kintone: {ok: true, text: "..."}
     Kintone-->>User: 既存の内容に追記したプレビューを表示(編集可能)
     User->>Kintone: 内容を確認・修正し「反映する」をクリック
-    Kintone->>Kintone: 写真をkintoneへアップロード(fileKey取得)
-    Kintone->>Kintone: kintone.app.record.set()でテキスト・写真を反映
+    Kintone->>Kintone: 写真をkintoneへアップロード(fileKey取得、まだ添付はしない)
+    Kintone->>Kintone: kintone.app.record.set()でテキストのみ反映
+    User->>Kintone: kintone本来の「保存」ボタンをクリック
+    Kintone->>Kintone: レコード保存成功(submit.successイベント)
+    Kintone->>Kintone: REST API(PUT)で添付ファイルフィールドへfileKeyを反映
 ```
+
+**注意**: 添付ファイルフィールドは`kintone.app.record.set()`では更新できない仕様（公式ドキュメントの制限事項に明記）のため、「反映する」の時点ではテキストだけが入り、**写真はkintone本来の保存ボタンを押した後に反映されます**。詳細は[CLAUDE.md](./CLAUDE.md#なぜ反映するの時点で添付ファイルを直接セットしないのか重要)を参照してください。
 
 ## デモ用kintoneアプリの構成案:「現場日報」
 
@@ -108,10 +113,10 @@ const GAS_SHARED_SECRET = 'REPLACE_WITH_SHARED_SECRET';
 
 ## 動作確認済みの範囲・未検証の範囲（正直な現状）
 
-- `src/desktop.js`の純粋関数（文字列結合・画像サイズ計算・レスポンス解析）と、`gas/src/AzureOcrClient.js`のレスポンス解析処理はVitestで単体テスト済み（`npm run test`）
-- マス目キャンバス方式のOCR精度を検証した際と同じ方法（ブラウザでの実機検証）で、canvas読み込み→リサイズ→Base64化までの一連の処理を動作確認済み
-- **Azure AI Visionへの実際のリクエスト・実際の手書き文字での認識精度は、Azureアカウントを持たない環境のため未検証です。** 導入前に、実際の顧客の手書きサンプルで認識精度を確認してください
-- kintone実機（レコード追加・編集画面でのスペース要素へのボタン設置、ファイルアップロード、`kintone.app.record.set()`）でのエンドツーエンドの動作も、実際のkintone環境が無いため未検証です。導入前に必ず実機で確認してください
+- `src/desktop.js`の純粋関数（文字列結合・画像サイズ計算・レスポンス解析・添付ファイル用recordパラメーター組み立て）と、`gas/src/AzureOcrClient.js`のレスポンス解析処理はVitestで単体テスト済み（`npm run test`）
+- **実機での動作確認済み**: Azureリソース作成・GAS Web Appのデプロイ・kintone実機での「撮影→文字にする→反映する→保存」の一連の流れを、実際の環境で確認済み。以下の不具合は実機テストで発見し、修正済み
+    - `kintone.app.record.set()`が添付ファイルフィールドを更新できない仕様だったため、写真が反映されない不具合（→ レコード保存成功後にREST APIで反映する方式へ修正。詳細は[CLAUDE.md](./CLAUDE.md)参照）
+- 実際の手書き文字（連続した筆記体等）での認識精度は、印刷された文字ほど検証できていません。導入前に、実際の顧客の手書きサンプルで認識精度を確認してください
 
 ## 既知の制約
 

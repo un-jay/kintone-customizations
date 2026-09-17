@@ -1,6 +1,7 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/17        J.Yamamoto      :buildAttachmentRecordPatchのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのユニットテスト(desktop.test.js)
 //     Description : 「計算処理」セクションの純粋関数を検証する。
@@ -113,5 +114,31 @@ describe('parseOcrResponse', () => {
         expect(calc.parseOcrResponse(JSON.stringify({ text: '本日の作業完了' }))).toEqual(
             { ok: false, text: '', error: calc.MSGS.UNKNOWN_ERROR },
         );
+    });
+});
+
+describe('buildAttachmentRecordPatch', () => {
+    it('imageField→fileKeyのマップを、REST API用のrecordパラメーターへ変換する', () => {
+        expect(
+            calc.buildAttachmentRecordPatch({ WORK_NOTES_PHOTO: 'file-key-1' }),
+        ).toEqual({
+            WORK_NOTES_PHOTO: { value: [{ fileKey: 'file-key-1' }] },
+        });
+    });
+
+    it('複数フィールド分をまとめて変換する', () => {
+        expect(
+            calc.buildAttachmentRecordPatch({
+                WORK_NOTES_PHOTO: 'file-key-1',
+                REMARKS_PHOTO: 'file-key-2',
+            }),
+        ).toEqual({
+            WORK_NOTES_PHOTO: { value: [{ fileKey: 'file-key-1' }] },
+            REMARKS_PHOTO: { value: [{ fileKey: 'file-key-2' }] },
+        });
+    });
+
+    it('空のマップの場合は空オブジェクトを返す', () => {
+        expect(calc.buildAttachmentRecordPatch({})).toEqual({});
     });
 });

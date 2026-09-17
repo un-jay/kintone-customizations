@@ -1,6 +1,14 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/17        J.Yamamoto      :kintone.app.record.set()は添付ファイル
+//                                                フィールドへ値をセットできない仕様
+//                                                (公式ドキュメントの制限事項に明記)のため、
+//                                                写真が反映されない不具合を修正。
+//                                                「反映する」時点ではfileKeyを保持するだけにし、
+//                                                レコード保存成功イベント(submit.success)で
+//                                                REST APIにより添付ファイルフィールドを
+//                                                改めて更新するように変更
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : 紙の手書きメモを撮影し、GAS Web App経由でAzure AI Vision(Read機能)
@@ -78,7 +86,17 @@
         UNKNOWN_ERROR: '不明なエラーです。',
         SPACE_NOT_FOUND:
             '手書き入力ボタンの設置先スペースが見つかりません(要素ID設定を確認してください)',
+        ATTACHMENT_FAILED:
+            'レコードの保存はできましたが、写真の添付に失敗しました。お手数ですが、対象の添付ファイルフィールドへ手動で写真を追加してください。',
     };
+
+    /**
+     * 「反映する」時点ではまだレコードが保存されていないため、添付ファイルフィールドの
+     * fileKeyをここに一時保持し、レコード保存成功後(submit.successイベント)にREST APIで
+     * まとめて反映する。キー: imageField、値: fileKey。
+     * @type {Object<string, string>}
+     */
+    const pendingAttachments = {};
 
     // ==========================
     // 計算処理
@@ -154,6 +172,20 @@
             };
         }
         return { ok: true, text: body.text || '', error: null };
+    }
+
+    /**
+     * pendingAttachments(imageField→fileKeyのマップ)から、REST APIのrecordパラメーターの
+     * 一部(添付ファイルフィールド分)を組み立てる。
+     * @param {Object<string, string>} pending
+     * @returns {Object} { [imageField]: { value: [{ fileKey }] } } の形式
+     */
+    function buildAttachmentRecordPatch(pending) {
+        const record = {};
+        Object.keys(pending).forEach((imageField) => {
+            record[imageField] = { value: [{ fileKey: pending[imageField] }] };
+        });
+        return record;
     }
 
     // ==========================
@@ -266,6 +298,27 @@
         }
         const body = await response.json();
         return body.fileKey;
+    }
+
+    /**
+     * 保存済みレコードへ、添付ファイルフィールドの値をREST APIで反映する。
+     * 【重要】kintone.app.record.set()は添付ファイルフィールドへ値をセットできない仕様
+     * (公式ドキュメント「レコードに値をセットする」の制限事項を参照)のため、
+     * レコードが保存された後にREST APIで改めて更新する必要がある。
+     * @param {number} appId
+     * @param {string} recordId
+     * @param {string} revision
+     * @param {Object<string, string>} pending - imageField→fileKeyのマップ
+     * @returns {Promise<Object>}
+     */
+    async function applyPendingAttachments(appId, recordId, revision, pending) {
+        const params = {
+            app: appId,
+            id: recordId,
+            revision,
+            record: buildAttachmentRecordPatch(pending),
+        };
+        return kintone.api(kintone.api.url('/k/v1/record.json', true), 'PUT', params);
     }
 
     // ==========================
@@ -450,13 +503,20 @@
             ui.applyButton.disabled = true;
             ui.statusText.textContent = UI.APPLYING_LABEL;
             try {
+                // 添付ファイルフィールドはkintone.app.record.set()で値をセットできない
+                // (公式ドキュメントの制限事項を参照)ため、fileKeyだけ保持しておき、
+                // レコード保存成功後(submit.successイベント)にREST APIで反映する。
                 const fileKey = await uploadFileToKintone(resizedBlob, 'handwriting.jpg');
+                pendingAttachments[target.imageField] = fileKey;
+
                 const record = kintone.app.record.get();
                 record.record[target.textField].value = ui.textArea.value;
-                record.record[target.imageField].value = [{ fileKey }];
                 kintone.app.record.set(record);
                 close();
-                notify(`「${target.label}」に反映しました。`, 'SUCCESS');
+                notify(
+                    `「${target.label}」に反映しました。写真は保存後に添付されます。`,
+                    'SUCCESS',
+                );
             } catch (error) {
                 notify(MSGS.APPLY_FAILED + '\n' + error.message, 'ERROR');
             } finally {
@@ -501,6 +561,39 @@
         return event;
     });
 
+    /**
+     * レコード保存成功後、保留中の添付ファイル(pendingAttachments)があれば
+     * REST APIでまとめて反映する。add/edit.submit.successはPromiseに対応しているため、
+     * asyncハンドラーをそのまま返せる。
+     */
+    kintone.events.on(
+        ['app.record.create.submit.success', 'app.record.edit.submit.success'],
+        async (event) => {
+            const pendingImageFields = Object.keys(pendingAttachments);
+            if (pendingImageFields.length === 0 || !event.record) {
+                return event;
+            }
+
+            const pending = { ...pendingAttachments };
+            pendingImageFields.forEach(
+                (imageField) => delete pendingAttachments[imageField],
+            );
+
+            try {
+                await applyPendingAttachments(
+                    event.appId,
+                    event.recordId,
+                    event.record.$revision.value,
+                    pending,
+                );
+            } catch (error) {
+                console.error(error);
+                notify(MSGS.ATTACHMENT_FAILED + '\n' + error.message, 'ERROR');
+            }
+            return event;
+        },
+    );
+
     // Vitestからのテスト用に、計算処理の純粋関数とエラーメッセージ定数を
     // CommonJS export経由で公開する。kintone(ブラウザ)実行時はmoduleが
     // 存在しないため、このブロックは実行されない。
@@ -510,6 +603,7 @@
             computeResizedDimensions,
             dataUrlToBase64,
             parseOcrResponse,
+            buildAttachmentRecordPatch,
             MSGS,
         };
     }
