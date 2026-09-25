@@ -13,6 +13,9 @@
 //                                                だったため、ゲストスペースのアプリで失敗する
 //                                                可能性があった。kintone.api.url()で
 //                                                ゲストスペースを自動判定するように変更
+//  V1.3.2     2026/09/25        J.Yamamoto      :モバイルアプリ(WebView)ではcaptureが効かず、撮影/選択の
+//                                                2ボタンに分ける意味が無かったため、
+//                                                「写真を撮る／選ぶ」の1ボタンに戻した
 //  V1.3.1     2026/09/25        J.Yamamoto      :エラー通知が全画面オーバーレイの背面に隠れ、
 //                                                「押しても反応しない」ように見える問題に対応。
 //                                                エラーをオーバーレイ内にも表示する。
@@ -78,8 +81,7 @@
         BUTTON_LABEL_PREFIX: '📷 ',
         BUTTON_LABEL_SUFFIX: 'を手書きメモから読み取る',
         OVERLAY_TITLE_PREFIX: '手書きメモの読み取り: ',
-        TAKE_PHOTO_LABEL: '📷 撮影する',
-        PICK_PHOTO_LABEL: '🖼 写真を選ぶ',
+        TAKE_PHOTO_LABEL: '📷 写真を撮る／選ぶ',
         RECOGNIZE_LABEL: '文字にする',
         APPLY_LABEL: 'この内容を反映する',
         CANCEL_LABEL: 'キャンセル',
@@ -353,11 +355,10 @@
      * 手書き読み取り用の全画面オーバーレイのDOM要素一式を生成する(まだbodyへは追加しない)。
      * マス目キャンバス等を含む複雑なUIのため、kintone.createDialogではなく独自のフルスクリーン
      * UIとする(UI設計方針の「独自のUI要素はHTML/CSSで実装する」に基づく)。
-     * @param {Object}  target     - HANDWRITING_TARGETSの1要素
-     * @param {boolean} showCamera - 「撮影する」ボタンを表示するか(タッチ端末のみ)
+     * @param {Object} target - HANDWRITING_TARGETSの1要素
      * @returns {Object} 生成した各要素への参照をまとめたオブジェクト
      */
-    function createOverlay(target, showCamera) {
+    function createOverlay(target) {
         const overlay = document.createElement('div');
         overlay.className = 'handwriting-input-overlay';
 
@@ -376,35 +377,19 @@
         const body = document.createElement('div');
         body.className = 'handwriting-input-body';
 
-        // 撮影用(capture指定: スマホ・タブレットでカメラが直接起動する)と、
-        // 選択用(capture無し: 写真ライブラリ・ファイルから選べる)の2つを用意する。
-        const cameraInput = document.createElement('input');
-        cameraInput.type = 'file';
-        cameraInput.accept = 'image/*';
-        cameraInput.setAttribute('capture', 'environment');
-        cameraInput.hidden = true;
-
-        const galleryInput = document.createElement('input');
-        galleryInput.type = 'file';
-        galleryInput.accept = 'image/*';
-        galleryInput.hidden = true;
-
-        const photoButtons = document.createElement('div');
-        photoButtons.className = 'handwriting-input-photo-buttons';
+        // capture指定により、カメラが起動できる環境ではカメラが直接起動する。
+        // 起動できない環境(PC・kintoneモバイルアプリのWebView等)では、OS標準の
+        // ファイル選択メニュー(写真を撮る/写真を選ぶ等)が表示される。
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.setAttribute('capture', 'environment');
+        fileInput.hidden = true;
 
         const takePhotoButton = document.createElement('button');
         takePhotoButton.type = 'button';
         takePhotoButton.className = 'handwriting-input-primary-button';
         takePhotoButton.textContent = UI.TAKE_PHOTO_LABEL;
-        takePhotoButton.hidden = !showCamera;
-
-        const pickPhotoButton = document.createElement('button');
-        pickPhotoButton.type = 'button';
-        pickPhotoButton.className = 'handwriting-input-primary-button';
-        pickPhotoButton.textContent = UI.PICK_PHOTO_LABEL;
-
-        photoButtons.appendChild(takePhotoButton);
-        photoButtons.appendChild(pickPhotoButton);
 
         const previewImg = document.createElement('img');
         previewImg.className = 'handwriting-input-preview';
@@ -443,9 +428,8 @@
         footer.appendChild(cancelButton);
         footer.appendChild(applyButton);
 
-        body.appendChild(cameraInput);
-        body.appendChild(galleryInput);
-        body.appendChild(photoButtons);
+        body.appendChild(fileInput);
+        body.appendChild(takePhotoButton);
         body.appendChild(previewImg);
         body.appendChild(recognizeButton);
         body.appendChild(statusText);
@@ -458,10 +442,8 @@
 
         return {
             root: overlay,
-            cameraInput,
-            galleryInput,
+            fileInput,
             takePhotoButton,
-            pickPhotoButton,
             previewImg,
             recognizeButton,
             statusText,
@@ -513,9 +495,7 @@
             showStatus(text, true);
             notify(text, 'ERROR');
         };
-        // スマホ・タブレット(タッチ端末)では「撮影する」ボタンも表示する。
-        const showCamera = platform.isMobile || navigator.maxTouchPoints > 0;
-        const ui = createOverlay(target, showCamera);
+        const ui = createOverlay(target);
         document.body.appendChild(ui.root);
         // オーバーレイの背面(レコード画面)がスクロールしてしまうのを防ぐ。
         const previousOverflow = document.body.style.overflow;
@@ -530,12 +510,12 @@
 
         ui.closeButton.addEventListener('click', close);
         ui.cancelButton.addEventListener('click', close);
-        ui.takePhotoButton.addEventListener('click', () => ui.cameraInput.click());
-        ui.pickPhotoButton.addEventListener('click', () => ui.galleryInput.click());
+        ui.takePhotoButton.addEventListener('click', () => ui.fileInput.click());
 
-        async function onPhotoSelected(input) {
-            const file = input.files && input.files[0];
-            input.value = '';
+        ui.fileInput.addEventListener('change', async () => {
+            const file = ui.fileInput.files && ui.fileInput.files[0];
+            // 同じ写真を続けて選んでもchangeが発火するよう、選択状態をクリアしておく
+            ui.fileInput.value = '';
             if (!file) {
                 return;
             }
@@ -549,11 +529,7 @@
             } catch (error) {
                 showError(error.message);
             }
-        }
-        ui.cameraInput.addEventListener('change', () => onPhotoSelected(ui.cameraInput));
-        ui.galleryInput.addEventListener('change', () =>
-            onPhotoSelected(ui.galleryInput),
-        );
+        });
 
         ui.recognizeButton.addEventListener('click', async () => {
             if (!resizedBlob) {

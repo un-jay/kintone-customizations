@@ -5,6 +5,7 @@
                                                   100dvh・セーフエリア・ボタン横並び・
                                                   スマホ幅(600px以下)向けの調整を追加
     V1.1.1     2026/09/25        J.Yamamoto      :エラー表示(.is-error)を追加
+    V1.1.2     2026/09/25        J.Yamamoto      :撮影/選択の2ボタン用スタイル(photo-buttons)を削除
    ----------------------------------------------------------------------
         ModuleName  : メインスタイル(desktop.css)
         Description : 手書き読み取りオーバーレイのスタイル。現場のタブレットで
@@ -74,14 +75,6 @@
     align-items: center;
     gap: 16px;
     -webkit-overflow-scrolling: touch;
-}
-
-.handwriting-input-photo-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 12px;
-    width: 100%;
 }
 
 .handwriting-input-preview {
@@ -157,10 +150,6 @@
 @media (max-width: 600px) {
     .handwriting-input-body {
         padding: 16px 12px;
-    }
-
-    .handwriting-input-photo-buttons > button {
-        flex: 1 1 140px;
     }
 
     .handwriting-input-primary-button,

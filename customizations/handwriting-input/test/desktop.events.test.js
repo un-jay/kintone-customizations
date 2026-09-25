@@ -1,6 +1,7 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/25        J.Yamamoto      :新規作成
+//  V1.0.1     2026/09/25        J.Yamamoto      :写真ボタンを1つに戻したことに合わせて修正
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのイベント登録テスト(desktop.events.test.js)
 //     Description : PC用・モバイル用のイベントがそれぞれ登録され、
@@ -62,7 +63,7 @@ describe('モバイル画面', () => {
         return { spaces, notification };
     }
 
-    it('スペース要素へボタンを設置し、押すとオーバーレイ(撮影・選択ボタン付き)を開く', () => {
+    it('スペース要素へボタンを設置し、押すとオーバーレイ(写真を撮る／選ぶボタン付き)を開く', () => {
         const { spaces } = setupMobileKintone();
         const event = { record: {} };
 
@@ -81,15 +82,13 @@ describe('モバイル画面', () => {
         expect(document.body.style.overflow).toBe('hidden');
 
         const inputs = overlay.querySelectorAll('input[type=file]');
-        expect(inputs).toHaveLength(2);
+        expect(inputs).toHaveLength(1);
         expect(inputs[0].getAttribute('capture')).toBe('environment');
-        expect(inputs[1].hasAttribute('capture')).toBe(false);
 
         const buttonTexts = [...overlay.querySelectorAll('button')].map(
             (b) => b.textContent,
         );
-        expect(buttonTexts).toContain('📷 撮影する');
-        expect(buttonTexts).toContain('🖼 写真を選ぶ');
+        expect(buttonTexts).toContain('📷 写真を撮る／選ぶ');
     });
 
     it('同じ画面で2回showが発火してもボタンは重複しない', () => {
