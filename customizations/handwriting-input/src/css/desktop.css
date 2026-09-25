@@ -1,6 +1,9 @@
 /* ======================================================================
     Version    作成日(更新日)    更新者          :更新内容
     V1.0.0     2026/09/17        J.Yamamoto      :新規作成
+    V1.1.0     2026/09/25        J.Yamamoto      :モバイル対応(PC用・モバイル用で共用)。
+                                                  100dvh・セーフエリア・ボタン横並び・
+                                                  スマホ幅(600px以下)向けの調整を追加
    ----------------------------------------------------------------------
         ModuleName  : メインスタイル(desktop.css)
         Description : 手書き読み取りオーバーレイのスタイル。現場のタブレットで
@@ -27,6 +30,9 @@
 .handwriting-input-overlay {
     position: fixed;
     inset: 0;
+    /* モバイルブラウザのアドレスバー分で下が切れないよう、動的ビューポート高を優先する */
+    height: 100vh;
+    height: 100dvh;
     z-index: 100000;
     display: flex;
     flex-direction: column;
@@ -38,6 +44,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
+    padding-top: max(16px, env(safe-area-inset-top));
     background-color: #2c3e50;
     color: #fff;
 }
@@ -65,6 +72,15 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.handwriting-input-photo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
 }
 
 .handwriting-input-preview {
@@ -104,6 +120,7 @@
     justify-content: flex-end;
     gap: 12px;
     padding: 16px 20px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
     background-color: #fff;
     border-top: 1px solid #ddd;
 }
@@ -133,4 +150,45 @@
     color: #555;
     background-color: #fff;
     border: 1px solid #ccc;
+}
+
+/* スマホ幅: ボタンを押しやすい幅・高さにし、入力時のiOS自動ズームを避ける */
+@media (max-width: 600px) {
+    .handwriting-input-body {
+        padding: 16px 12px;
+    }
+
+    .handwriting-input-photo-buttons > button {
+        flex: 1 1 140px;
+    }
+
+    .handwriting-input-primary-button,
+    .handwriting-input-secondary-button {
+        min-width: 0;
+        min-height: 48px;
+    }
+
+    .handwriting-input-body > .handwriting-input-primary-button {
+        width: 100%;
+    }
+
+    .handwriting-input-footer {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .handwriting-input-footer > button {
+        flex: 1;
+    }
+
+    .handwriting-input-trigger-button {
+        width: 100%;
+        padding: 14px 16px;
+    }
+
+    .handwriting-input-textarea {
+        min-height: 200px;
+        /* 16px未満だとiOS Safariが入力時にページを自動拡大する */
+        font-size: 16px;
+    }
 }

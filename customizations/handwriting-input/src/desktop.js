@@ -13,6 +13,11 @@
 //                                                だったため、ゲストスペースのアプリで失敗する
 //                                                可能性があった。kintone.api.url()で
 //                                                ゲストスペースを自動判定するように変更
+//  V1.3.0     2026/09/25        J.Yamamoto      :モバイル(kintone.mobile.*)に対応。PC用・モバイル用の
+//                                                両方に同じファイルをアップロードして共用する。
+//                                                スマホで「撮影する」(カメラ直接起動)と
+//                                                「写真を選ぶ」(写真ライブラリ等から選択)を
+//                                                使い分けられるよう、ファイル入力を2つに分けた
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : 紙の手書きメモを撮影し、GAS Web App経由でAzure AI Vision(Read機能)
@@ -69,8 +74,8 @@
         BUTTON_LABEL_PREFIX: '📷 ',
         BUTTON_LABEL_SUFFIX: 'を手書きメモから読み取る',
         OVERLAY_TITLE_PREFIX: '手書きメモの読み取り: ',
-        TAKE_PHOTO_LABEL: '写真を撮る/選ぶ',
-        RETAKE_LABEL: '撮り直す',
+        TAKE_PHOTO_LABEL: '📷 撮影する',
+        PICK_PHOTO_LABEL: '🖼 写真を選ぶ',
         RECOGNIZE_LABEL: '文字にする',
         APPLY_LABEL: 'この内容を反映する',
         CANCEL_LABEL: 'キャンセル',
@@ -336,10 +341,11 @@
      * 手書き読み取り用の全画面オーバーレイのDOM要素一式を生成する(まだbodyへは追加しない)。
      * マス目キャンバス等を含む複雑なUIのため、kintone.createDialogではなく独自のフルスクリーン
      * UIとする(UI設計方針の「独自のUI要素はHTML/CSSで実装する」に基づく)。
-     * @param {Object} target - HANDWRITING_TARGETSの1要素
+     * @param {Object}  target     - HANDWRITING_TARGETSの1要素
+     * @param {boolean} showCamera - 「撮影する」ボタンを表示するか(タッチ端末のみ)
      * @returns {Object} 生成した各要素への参照をまとめたオブジェクト
      */
-    function createOverlay(target) {
+    function createOverlay(target, showCamera) {
         const overlay = document.createElement('div');
         overlay.className = 'handwriting-input-overlay';
 
@@ -358,17 +364,35 @@
         const body = document.createElement('div');
         body.className = 'handwriting-input-body';
 
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.accept = 'image/*';
-        fileInput.setAttribute('capture', 'environment');
-        fileInput.className = 'handwriting-input-file-input';
-        fileInput.hidden = true;
+        // 撮影用(capture指定: スマホ・タブレットでカメラが直接起動する)と、
+        // 選択用(capture無し: 写真ライブラリ・ファイルから選べる)の2つを用意する。
+        const cameraInput = document.createElement('input');
+        cameraInput.type = 'file';
+        cameraInput.accept = 'image/*';
+        cameraInput.setAttribute('capture', 'environment');
+        cameraInput.hidden = true;
+
+        const galleryInput = document.createElement('input');
+        galleryInput.type = 'file';
+        galleryInput.accept = 'image/*';
+        galleryInput.hidden = true;
+
+        const photoButtons = document.createElement('div');
+        photoButtons.className = 'handwriting-input-photo-buttons';
 
         const takePhotoButton = document.createElement('button');
         takePhotoButton.type = 'button';
         takePhotoButton.className = 'handwriting-input-primary-button';
         takePhotoButton.textContent = UI.TAKE_PHOTO_LABEL;
+        takePhotoButton.hidden = !showCamera;
+
+        const pickPhotoButton = document.createElement('button');
+        pickPhotoButton.type = 'button';
+        pickPhotoButton.className = 'handwriting-input-primary-button';
+        pickPhotoButton.textContent = UI.PICK_PHOTO_LABEL;
+
+        photoButtons.appendChild(takePhotoButton);
+        photoButtons.appendChild(pickPhotoButton);
 
         const previewImg = document.createElement('img');
         previewImg.className = 'handwriting-input-preview';
@@ -407,8 +431,9 @@
         footer.appendChild(cancelButton);
         footer.appendChild(applyButton);
 
-        body.appendChild(fileInput);
-        body.appendChild(takePhotoButton);
+        body.appendChild(cameraInput);
+        body.appendChild(galleryInput);
+        body.appendChild(photoButtons);
         body.appendChild(previewImg);
         body.appendChild(recognizeButton);
         body.appendChild(statusText);
@@ -421,8 +446,10 @@
 
         return {
             root: overlay,
-            fileInput,
+            cameraInput,
+            galleryInput,
             takePhotoButton,
+            pickPhotoButton,
             previewImg,
             recognizeButton,
             statusText,
@@ -435,34 +462,58 @@
     }
 
     /**
-     * kintone通知でメッセージを表示する。
-     * @param {string} text
-     * @param {'INFO'|'SUCCESS'|'ERROR'} [type]
+     * PC用・モバイル用でkintone JS APIの名前空間が異なる(kintone.app.* と
+     * kintone.mobile.app.*)ため、画面ごとに使うAPIをここで切り替える。
+     * 同じjs/cssをPC用・モバイル用の両方にアップロードして共用する。
+     * (kintone.mobileはPC画面には存在しないため、必ず呼び出し時に評価する)
      */
-    function notify(text, type = 'INFO') {
-        kintone.showNotification(type, text);
-    }
+    const PLATFORM = {
+        desktop: {
+            isMobile: false,
+            getSpaceElement: (id) => kintone.app.record.getSpaceElement(id),
+            getRecord: () => kintone.app.record.get(),
+            setRecord: (record) => kintone.app.record.set(record),
+            notify: (text, type) => kintone.showNotification(type, text),
+        },
+        mobile: {
+            isMobile: true,
+            getSpaceElement: (id) => kintone.mobile.app.record.getSpaceElement(id),
+            getRecord: () => kintone.mobile.app.record.get(),
+            setRecord: (record) => kintone.mobile.app.record.set(record),
+            notify: (text, type) => kintone.mobile.showNotification(type, text),
+        },
+    };
 
     /**
      * 手書き読み取りオーバーレイを開き、撮影→認識→確認→反映の一連の操作を仲介する。
-     * @param {Object} target - HANDWRITING_TARGETSの1要素
+     * @param {Object} target   - HANDWRITING_TARGETSの1要素
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
      */
-    function openHandwritingOverlay(target) {
-        const ui = createOverlay(target);
+    function openHandwritingOverlay(target, platform) {
+        const notify = (text, type = 'INFO') => platform.notify(text, type);
+        // スマホ・タブレット(タッチ端末)では「撮影する」ボタンも表示する。
+        const showCamera = platform.isMobile || navigator.maxTouchPoints > 0;
+        const ui = createOverlay(target, showCamera);
         document.body.appendChild(ui.root);
+        // オーバーレイの背面(レコード画面)がスクロールしてしまうのを防ぐ。
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
 
         let resizedBlob = null;
 
         function close() {
             document.body.removeChild(ui.root);
+            document.body.style.overflow = previousOverflow;
         }
 
         ui.closeButton.addEventListener('click', close);
         ui.cancelButton.addEventListener('click', close);
-        ui.takePhotoButton.addEventListener('click', () => ui.fileInput.click());
+        ui.takePhotoButton.addEventListener('click', () => ui.cameraInput.click());
+        ui.pickPhotoButton.addEventListener('click', () => ui.galleryInput.click());
 
-        ui.fileInput.addEventListener('change', async () => {
-            const file = ui.fileInput.files && ui.fileInput.files[0];
+        async function onPhotoSelected(input) {
+            const file = input.files && input.files[0];
+            input.value = '';
             if (!file) {
                 return;
             }
@@ -472,11 +523,14 @@
                 ui.previewImg.src = dataUrl;
                 ui.previewImg.hidden = false;
                 ui.recognizeButton.disabled = false;
-                ui.takePhotoButton.textContent = UI.RETAKE_LABEL;
             } catch (error) {
                 notify(error.message, 'ERROR');
             }
-        });
+        }
+        ui.cameraInput.addEventListener('change', () => onPhotoSelected(ui.cameraInput));
+        ui.galleryInput.addEventListener('change', () =>
+            onPhotoSelected(ui.galleryInput),
+        );
 
         ui.recognizeButton.addEventListener('click', async () => {
             if (!resizedBlob) {
@@ -491,7 +545,7 @@
                 if (!result.ok) {
                     throw new Error(result.error || MSGS.RECOGNIZE_FAILED);
                 }
-                const record = kintone.app.record.get();
+                const record = platform.getRecord();
                 const existingValue = record.record[target.textField].value;
                 ui.textArea.value = appendRecognizedText(existingValue, result.text);
                 ui.textArea.hidden = false;
@@ -515,9 +569,9 @@
                 const fileKey = await uploadFileToKintone(resizedBlob, 'handwriting.jpg');
                 pendingAttachments[target.imageField] = fileKey;
 
-                const record = kintone.app.record.get();
+                const record = platform.getRecord();
                 record.record[target.textField].value = ui.textArea.value;
-                kintone.app.record.set(record);
+                platform.setRecord(record);
                 close();
                 notify(
                     `「${target.label}」に反映しました。写真は保存後に添付されます。`,
@@ -539,42 +593,49 @@
 
     /**
      * レコード追加・編集画面の表示時、HANDWRITING_TARGETSの各対象について
-     * スペース要素へ「手書きメモを読み取る」ボタンを設置する。
+     * スペース要素へ「手書きメモを読み取る」ボタンを設置する(PC・モバイル共通)。
      *
      * 【重要】kintone.app.record.getFieldElement()はレコード詳細画面専用のAPIで、
      * レコード追加・編集画面では使用できない。そのためボタンの設置先には、
      * 対象アプリにあらかじめ配置したスペースフィールド(getSpaceElement)を使う。
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
+     * @returns {Function} kintone.events.on()に渡すハンドラー
      */
-    kintone.events.on(['app.record.create.show', 'app.record.edit.show'], (event) => {
-        HANDWRITING_TARGETS.forEach((target) => {
-            const spaceElm = kintone.app.record.getSpaceElement(target.spaceId);
-            if (!spaceElm) {
-                console.warn(`${MSGS.SPACE_NOT_FOUND}: spaceId=${target.spaceId}`);
-                return;
-            }
-            if (spaceElm.querySelector(`.${BUTTON_CLASS}`)) {
-                return;
-            }
+    function createShowHandler(platform) {
+        return (event) => {
+            HANDWRITING_TARGETS.forEach((target) => {
+                const spaceElm = platform.getSpaceElement(target.spaceId);
+                if (!spaceElm) {
+                    console.warn(`${MSGS.SPACE_NOT_FOUND}: spaceId=${target.spaceId}`);
+                    return;
+                }
+                if (spaceElm.querySelector(`.${BUTTON_CLASS}`)) {
+                    return;
+                }
 
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `${BUTTON_CLASS} kintoneplugin-button-normal`;
-            button.textContent =
-                UI.BUTTON_LABEL_PREFIX + target.label + UI.BUTTON_LABEL_SUFFIX;
-            button.addEventListener('click', () => openHandwritingOverlay(target));
-            spaceElm.appendChild(button);
-        });
-        return event;
-    });
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `${BUTTON_CLASS} kintoneplugin-button-normal`;
+                button.textContent =
+                    UI.BUTTON_LABEL_PREFIX + target.label + UI.BUTTON_LABEL_SUFFIX;
+                button.addEventListener('click', () =>
+                    openHandwritingOverlay(target, platform),
+                );
+                spaceElm.appendChild(button);
+            });
+            return event;
+        };
+    }
 
     /**
      * レコード保存成功後、保留中の添付ファイル(pendingAttachments)があれば
      * REST APIでまとめて反映する。add/edit.submit.successはPromiseに対応しているため、
      * asyncハンドラーをそのまま返せる。
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
+     * @returns {Function} kintone.events.on()に渡すハンドラー
      */
-    kintone.events.on(
-        ['app.record.create.submit.success', 'app.record.edit.submit.success'],
-        async (event) => {
+    function createSubmitSuccessHandler(platform) {
+        return async (event) => {
             const pendingImageFields = Object.keys(pendingAttachments);
             if (pendingImageFields.length === 0 || !event.record) {
                 return event;
@@ -594,10 +655,32 @@
                 );
             } catch (error) {
                 console.error(error);
-                notify(MSGS.ATTACHMENT_FAILED + '\n' + error.message, 'ERROR');
+                platform.notify(MSGS.ATTACHMENT_FAILED + '\n' + error.message, 'ERROR');
             }
             return event;
-        },
+        };
+    }
+
+    // PC用・モバイル用のどちらの画面でも動くよう、両方のイベントを登録する
+    // (PC用・モバイル用は別々に読み込まれ、該当しない側のイベントは発火しない)。
+    kintone.events.on(
+        ['app.record.create.show', 'app.record.edit.show'],
+        createShowHandler(PLATFORM.desktop),
+    );
+    kintone.events.on(
+        ['mobile.app.record.create.show', 'mobile.app.record.edit.show'],
+        createShowHandler(PLATFORM.mobile),
+    );
+    kintone.events.on(
+        ['app.record.create.submit.success', 'app.record.edit.submit.success'],
+        createSubmitSuccessHandler(PLATFORM.desktop),
+    );
+    kintone.events.on(
+        [
+            'mobile.app.record.create.submit.success',
+            'mobile.app.record.edit.submit.success',
+        ],
+        createSubmitSuccessHandler(PLATFORM.mobile),
     );
 
     // Vitestからのテスト用に、計算処理の純粋関数とエラーメッセージ定数を

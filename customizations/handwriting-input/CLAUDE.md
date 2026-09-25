@@ -49,9 +49,9 @@ reminder-notifyのGASは、送信元メールアドレスを顧客自身のも�
 
 ## 動作フロー
 
-1. レコード追加・編集画面表示時（PC/モバイル）に、`HANDWRITING_TARGETS`の各要素についてスペース要素へボタンを設置する
+1. レコード追加・編集画面表示時（PC/モバイル。`app.record.*.show`と`mobile.app.record.*.show`の両方を登録）に、`HANDWRITING_TARGETS`の各要素についてスペース要素へボタンを設置する
 2. ボタン押下 → 全画面オーバーレイ（独自UI。マス目キャンバスのような複雑なUIのため`kintone.createDialog`ではなく独自のフルスクリーンUIとする）を表示する
-3. `<input type="file" accept="image/*" capture="environment">`で写真を撮影または選択する（モバイル/タブレットではカメラが直接起動する。PCではファイル選択にフォールバックする）
+3. 写真を撮影または選択する。`<input type="file" accept="image/*" capture="environment">`（「📷 撮影する」。カメラが直接起動する）と、`capture`無しの`<input type="file" accept="image/*">`（「🖼 写真を選ぶ」。写真ライブラリ・ファイルから選択）の2つを使い分ける。「撮影する」はモバイル画面またはタッチ端末（`navigator.maxTouchPoints > 0`）でのみ表示し、PCでは「写真を選ぶ」のみ
 4. 撮影した写真をプレビュー表示し、アップロード前にクライアント側でリサイズする（長辺1600px・JPEG品質0.8を目安。現場のネットワークが遅い前提で、送信量を抑えるため）
 5. 「文字にする」ボタン → リサイズ後の画像をBase64化し、GAS Web AppへPOSTする（後述のCORS対応が必要）
 6. 認識結果を、対象フィールドの**既存の値の末尾に改行を挟んで追記**する形でプレビュー欄（編集可能なテキストエリア）に表示する（1日の中で複数回メモを取り込む運用を想定し、上書きしない）
@@ -65,6 +65,15 @@ reminder-notifyのGASは、送信元メールアドレスを顧客自身のも�
 公式ドキュメント「[レコードに値をセットする](https://cybozu.dev/ja/kintone/docs/js-api/record/set-record-value/)」の制限事項に、**「添付ファイルフィールドでは、レコードの値を書き換えできません」と明記されている**。`kintone.app.record.set()`は添付ファイルフィールドに対して機能しない（実装時に見落とし、実機テストで「写真だけ反映されない」不具合として発覚した）。
 
 添付ファイルフィールドをJavaScriptから更新する唯一の方法は、REST API(`kintone.api()`)で`record.json`をPUTすることだが、これには保存済みレコードの`id`が必要（新規作成画面ではまだ存在しない）。そのため、「反映する」時点ではfileKeyを保持するだけにし、**レコードが実際に保存された後**（`submit.success`イベント）に、`event.recordId`・`event.record.$revision.value`を使ってREST APIで添付ファイルフィールドだけを更新する、という2段階の設計にしている。
+
+## モバイル対応の方針（重要）
+
+`mobile.js`/`mobile.css`を別に作らず、**`desktop.js`/`desktop.css`をPC用・モバイル用の両方にアップロードして共用する**。理由は、処理の大半（画像リサイズ・GAS呼び出し・ファイルアップロード・オーバーレイUI）が共通で、分けると二重管理になるため。
+
+- PC用とモバイル用でkintone JS APIの名前空間だけが異なる（`kintone.app.record.*`/`kintone.showNotification` と `kintone.mobile.app.record.*`/`kintone.mobile.showNotification`、イベント名の`mobile.`接頭辞）。この差は`desktop.js`の`PLATFORM`オブジェクト（`desktop`/`mobile`）に集約し、ハンドラー生成関数（`createShowHandler`/`createSubmitSuccessHandler`）とオーバーレイ処理へ`platform`として渡す。**`kintone.mobile`はPC画面には存在しないため、`PLATFORM`の各関数は呼び出し時に評価する（トップレベルで参照しない）**
+- ファイルアップロード（`kintone.api.url('/k/v1/file.json', true)`・`kintone.getRequestToken()`・`kintone.api()`）はモバイルでも同じAPIを使える
+- オーバーレイは`position: fixed`の全画面表示。モバイルでは`100dvh`（アドレスバー分で下が切れない）・セーフエリア（ノッチ・ホームバー）・スマホ幅（600px以下）でのボタン拡大、テキストエリアの`font-size: 16px`（iOS Safariの入力時自動ズーム防止）に対応している。オーバーレイ表示中は`document.body.style.overflow = 'hidden'`で背面のスクロールを止め、閉じるときに元の値へ戻す
+- モバイル用のレコード画面にも、PCと同じスペースフィールド（`HANDWRITING_TARGETS`の`spaceId`）が表示される。スペースフィールドはフォームの設定で、PC・モバイル共通
 
 ## GAS Web Appとの通信（CORS注意）
 
@@ -92,6 +101,7 @@ GAS Web Appは仕様上、`doPost`のレスポンスに任意のHTTPステータ
 
 - ゲストスペース内のアプリでも動作するよう、写真のアップロードURLは`kintone.api.url('/k/v1/file.json', true)`でゲストスペースを自動判定している（[ルートのCLAUDE.md](../../CLAUDE.md#ゲストスペースとセキュアアクセス)参照。ゲストスペースでの実機確認は未実施）。GAS Web App側はkintoneを呼ばない（Azureへ中継するだけ）ため、ゲストスペース・セキュアアクセスの影響を受けない
 
-- カメラ起動には`<input type="file" capture="environment">`を使用するブラウザ標準機能に依存する。対応状況はブラウザに依存するが、主要なモバイルブラウザ（iOS Safari、Android Chrome）では広くサポートされている
+- カメラ起動には`<input type="file" capture="environment">`を使用するブラウザ標準機能に依存する。対応状況はブラウザに依存するが、主要なモバイルブラウザ（iOS Safari、Android Chrome）では広くサポートされている。**スマートフォンの実機でのカメラ起動・アップロードは未確認**（jsdomでの単体テストのみ）
+- モバイルのkintone(ブラウザ版のモバイル画面`/k/m/`・kintoneモバイルアプリ)で読み込まれる。モバイルアプリ内のWebViewでは、カメラ・写真ライブラリへのアクセスがOS/アプリの権限設定に依存するため、導入時に実機で確認すること
 - OCRの認識精度は完全ではない。手書きの癖・筆記用具・照明条件により結果が変動するため、反映前に必ず作業者が確認する運用を前提とする
 - Azure AI Visionの1リクエストあたりの画像サイズ上限は20MB（クライアント側リサイズにより通常はこれを大きく下回る）

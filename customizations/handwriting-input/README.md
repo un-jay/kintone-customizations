@@ -106,13 +106,16 @@ const GAS_WEB_APP_URL =
 const GAS_SHARED_SECRET = 'REPLACE_WITH_SHARED_SECRET';
 ```
 
-「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下をPC用ファイルとしてアップロードしてください。
+「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下を**「PC用」と「モバイル用」の両方**にアップロードしてください（同じファイルを共用します。モバイル用にも入れないと、スマホのkintoneアプリでボタンが表示されません）。
 
 - JavaScript: `src/desktop.js`
 - CSS: `src/css/desktop.css`
 
+モバイル用の画面では、「📷 撮影する」（カメラが直接起動）と「🖼 写真を選ぶ」（写真ライブラリから選択）の2つのボタンから写真を選べます。PCでは「写真を選ぶ」のみが表示されます（タッチ操作できるタブレットでは両方表示されます）。
+
 ## 動作確認済みの範囲・未検証の範囲（正直な現状）
 
+- モバイル対応（`kintone.mobile.*`の切り替え・ボタン設置・オーバーレイ表示・キャンセル時のスクロール固定解除）は、jsdomを使ったVitestでAPIの切り替えまで検証済み。**スマートフォンの実機（iOS Safari・Android Chrome）でのカメラ起動・アップロードは未確認**
 - `src/desktop.js`の純粋関数（文字列結合・画像サイズ計算・レスポンス解析・添付ファイル用recordパラメーター組み立て）と、`gas/src/AzureOcrClient.js`のレスポンス解析処理はVitestで単体テスト済み（`npm run test`）
 - **実機での動作確認済み**: Azureリソース作成・GAS Web Appのデプロイ・kintone実機での「撮影→文字にする→反映する→保存」の一連の流れを、実際の環境で確認済み。以下の不具合は実機テストで発見し、修正済み
     - `kintone.app.record.set()`が添付ファイルフィールドを更新できない仕様だったため、写真が反映されない不具合（→ レコード保存成功後にREST APIで反映する方式へ修正。詳細は[CLAUDE.md](./CLAUDE.md)参照）
