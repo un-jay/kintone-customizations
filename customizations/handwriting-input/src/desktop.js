@@ -13,6 +13,10 @@
 //                                                だったため、ゲストスペースのアプリで失敗する
 //                                                可能性があった。kintone.api.url()で
 //                                                ゲストスペースを自動判定するように変更
+//  V1.3.1     2026/09/25        J.Yamamoto      :エラー通知が全画面オーバーレイの背面に隠れ、
+//                                                「押しても反応しない」ように見える問題に対応。
+//                                                エラーをオーバーレイ内にも表示する。
+//                                                GAS URL・共有シークレット未設定時の専用メッセージを追加
 //  V1.3.0     2026/09/25        J.Yamamoto      :モバイル(kintone.mobile.*)に対応。PC用・モバイル用の
 //                                                両方に同じファイルをアップロードして共用する。
 //                                                スマホで「撮影する」(カメラ直接起動)と
@@ -87,6 +91,8 @@
     const MSGS = {
         NO_PHOTO: '写真を撮影または選択してください。',
         RECOGNIZE_FAILED: '文字の認識に失敗しました。',
+        NOT_CONFIGURED:
+            'GAS Web AppのURLまたは共有シークレットが未設定です。desktop.jsの GAS_WEB_APP_URL / GAS_SHARED_SECRET を実際の値に書き換えて、アップロードし直してください。',
         APPLY_FAILED: '反映に失敗しました。',
         IMAGE_LOAD_FAILED: '画像の読み込みに失敗しました。',
         IMAGE_CONVERT_FAILED: '画像の変換に失敗しました。',
@@ -272,6 +278,12 @@
      * @returns {Promise<{ok: boolean, text: string, error: string|null}>}
      */
     async function callHandwritingOcr(base64Image) {
+        if (
+            GAS_WEB_APP_URL.includes('REPLACE_WITH') ||
+            GAS_SHARED_SECRET.includes('REPLACE_WITH')
+        ) {
+            throw new Error(MSGS.NOT_CONFIGURED);
+        }
         const response = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -491,6 +503,16 @@
      */
     function openHandwritingOverlay(target, platform) {
         const notify = (text, type = 'INFO') => platform.notify(text, type);
+        // kintoneの通知は全画面オーバーレイの背面に隠れて見えないことがあるため、
+        // エラーはオーバーレイ内の状態表示にも出す(操作した人が必ず気付けるようにする)。
+        const showStatus = (text, isError = false) => {
+            ui.statusText.textContent = text;
+            ui.statusText.classList.toggle('is-error', isError);
+        };
+        const showError = (text) => {
+            showStatus(text, true);
+            notify(text, 'ERROR');
+        };
         // スマホ・タブレット(タッチ端末)では「撮影する」ボタンも表示する。
         const showCamera = platform.isMobile || navigator.maxTouchPoints > 0;
         const ui = createOverlay(target, showCamera);
@@ -523,8 +545,9 @@
                 ui.previewImg.src = dataUrl;
                 ui.previewImg.hidden = false;
                 ui.recognizeButton.disabled = false;
+                showStatus('');
             } catch (error) {
-                notify(error.message, 'ERROR');
+                showError(error.message);
             }
         }
         ui.cameraInput.addEventListener('change', () => onPhotoSelected(ui.cameraInput));
@@ -534,11 +557,11 @@
 
         ui.recognizeButton.addEventListener('click', async () => {
             if (!resizedBlob) {
-                notify(MSGS.NO_PHOTO, 'ERROR');
+                showError(MSGS.NO_PHOTO);
                 return;
             }
             ui.recognizeButton.disabled = true;
-            ui.statusText.textContent = UI.RECOGNIZING_LABEL;
+            showStatus(UI.RECOGNIZING_LABEL);
             try {
                 const base64 = await blobToBase64(resizedBlob);
                 const result = await callHandwritingOcr(base64);
@@ -551,17 +574,18 @@
                 ui.textArea.hidden = false;
                 ui.previewLabel.hidden = false;
                 ui.applyButton.hidden = false;
+                showStatus('');
             } catch (error) {
-                notify(MSGS.RECOGNIZE_FAILED + '\n' + error.message, 'ERROR');
+                console.error(error);
+                showError(MSGS.RECOGNIZE_FAILED + '\n' + error.message);
             } finally {
-                ui.statusText.textContent = '';
                 ui.recognizeButton.disabled = false;
             }
         });
 
         ui.applyButton.addEventListener('click', async () => {
             ui.applyButton.disabled = true;
-            ui.statusText.textContent = UI.APPLYING_LABEL;
+            showStatus(UI.APPLYING_LABEL);
             try {
                 // 添付ファイルフィールドはkintone.app.record.set()で値をセットできない
                 // (公式ドキュメントの制限事項を参照)ため、fileKeyだけ保持しておき、
@@ -578,10 +602,10 @@
                     'SUCCESS',
                 );
             } catch (error) {
-                notify(MSGS.APPLY_FAILED + '\n' + error.message, 'ERROR');
+                console.error(error);
+                showError(MSGS.APPLY_FAILED + '\n' + error.message);
             } finally {
                 ui.applyButton.disabled = false;
-                ui.statusText.textContent = '';
             }
         });
     }

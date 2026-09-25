@@ -4,6 +4,7 @@
     V1.1.0     2026/09/25        J.Yamamoto      :モバイル対応(PC用・モバイル用で共用)。
                                                   100dvh・セーフエリア・ボタン横並び・
                                                   スマホ幅(600px以下)向けの調整を追加
+    V1.1.1     2026/09/25        J.Yamamoto      :エラー表示(.is-error)を追加
    ----------------------------------------------------------------------
         ModuleName  : メインスタイル(desktop.css)
         Description : 手書き読み取りオーバーレイのスタイル。現場のタブレットで
@@ -191,4 +192,15 @@
         /* 16px未満だとiOS Safariが入力時にページを自動拡大する */
         font-size: 16px;
     }
+}
+
+.handwriting-input-status.is-error {
+    padding: 10px 12px;
+    font-weight: bold;
+    color: #c0392b;
+    background-color: #fdecea;
+    border: 1px solid #e6b0aa;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    align-self: stretch;
 }
