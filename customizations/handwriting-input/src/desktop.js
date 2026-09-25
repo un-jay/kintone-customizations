@@ -13,6 +13,9 @@
 //                                                だったため、ゲストスペースのアプリで失敗する
 //                                                可能性があった。kintone.api.url()で
 //                                                ゲストスペースを自動判定するように変更
+//  V1.3.3     2026/09/25        J.Yamamoto      :写真選択後の縮小処理(数秒かかる)中に何も表示されず
+//                                                状態が分からなかったため、「写真を読み込んでいます」
+//                                                を表示。処理中表示に回転アイコンを追加
 //  V1.3.2     2026/09/25        J.Yamamoto      :モバイルアプリ(WebView)ではcaptureが効かず、撮影/選択の
 //                                                2ボタンに分ける意味が無かったため、
 //                                                「写真を撮る／選ぶ」の1ボタンに戻した
@@ -85,8 +88,9 @@
         RECOGNIZE_LABEL: '文字にする',
         APPLY_LABEL: 'この内容を反映する',
         CANCEL_LABEL: 'キャンセル',
-        RECOGNIZING_LABEL: '文字を認識しています...',
-        APPLYING_LABEL: '反映しています...',
+        LOADING_PHOTO_LABEL: '写真を読み込んでいます。しばらくお待ちください...',
+        RECOGNIZING_LABEL: '文字を認識しています。しばらくお待ちください...',
+        APPLYING_LABEL: '写真をアップロードして反映しています...',
         PREVIEW_LABEL: '認識結果(確認・修正してから反映してください)',
     };
 
@@ -487,9 +491,15 @@
         const notify = (text, type = 'INFO') => platform.notify(text, type);
         // kintoneの通知は全画面オーバーレイの背面に隠れて見えないことがあるため、
         // エラーはオーバーレイ内の状態表示にも出す(操作した人が必ず気付けるようにする)。
-        const showStatus = (text, isError = false) => {
+        // isBusy=trueのときは、状態表示の横に回転アイコンを出して「処理中」であることを示す。
+        const showStatus = (text, isError = false, isBusy = false) => {
             ui.statusText.textContent = text;
             ui.statusText.classList.toggle('is-error', isError);
+            ui.statusText.classList.toggle('is-busy', isBusy);
+            if (text) {
+                // スマホでは状態表示が画面外にあることがあるため、見える位置へスクロールする
+                ui.statusText.scrollIntoView({ block: 'nearest' });
+            }
         };
         const showError = (text) => {
             showStatus(text, true);
@@ -519,15 +529,21 @@
             if (!file) {
                 return;
             }
+            // 大きな写真は縮小に数秒かかることがあるため、処理中であることを先に表示する
+            ui.takePhotoButton.disabled = true;
+            ui.recognizeButton.disabled = true;
+            showStatus(UI.LOADING_PHOTO_LABEL, false, true);
             try {
                 const { blob, dataUrl } = await resizeImageFile(file);
                 resizedBlob = blob;
                 ui.previewImg.src = dataUrl;
                 ui.previewImg.hidden = false;
-                ui.recognizeButton.disabled = false;
                 showStatus('');
             } catch (error) {
                 showError(error.message);
+            } finally {
+                ui.takePhotoButton.disabled = false;
+                ui.recognizeButton.disabled = !resizedBlob;
             }
         });
 
@@ -537,7 +553,7 @@
                 return;
             }
             ui.recognizeButton.disabled = true;
-            showStatus(UI.RECOGNIZING_LABEL);
+            showStatus(UI.RECOGNIZING_LABEL, false, true);
             try {
                 const base64 = await blobToBase64(resizedBlob);
                 const result = await callHandwritingOcr(base64);
@@ -561,7 +577,7 @@
 
         ui.applyButton.addEventListener('click', async () => {
             ui.applyButton.disabled = true;
-            showStatus(UI.APPLYING_LABEL);
+            showStatus(UI.APPLYING_LABEL, false, true);
             try {
                 // 添付ファイルフィールドはkintone.app.record.set()で値をセットできない
                 // (公式ドキュメントの制限事項を参照)ため、fileKeyだけ保持しておき、
