@@ -9,6 +9,10 @@
 //                                                レコード保存成功イベント(submit.success)で
 //                                                REST APIにより添付ファイルフィールドを
 //                                                改めて更新するように変更
+//  V1.2.0     2026/09/25        J.Yamamoto      :写真のアップロードURLが/k/v1/file.json固定
+//                                                だったため、ゲストスペースのアプリで失敗する
+//                                                可能性があった。kintone.api.url()で
+//                                                ゲストスペースを自動判定するように変更
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : 紙の手書きメモを撮影し、GAS Web App経由でAzure AI Vision(Read機能)
@@ -288,7 +292,9 @@
         formData.append('__REQUEST_TOKEN__', kintone.getRequestToken());
         formData.append('file', blob, filename);
 
-        const response = await fetch('/k/v1/file.json', {
+        // ゲストスペースのアプリでは /k/guest/スペースID/v1/file.json になるため、
+        // kintone.api.url()(第2引数true)でゲストスペースを自動判定したURLを使う。
+        const response = await fetch(kintone.api.url('/k/v1/file.json', true), {
             method: 'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body: formData,

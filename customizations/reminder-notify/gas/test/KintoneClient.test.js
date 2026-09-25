@@ -11,7 +11,24 @@
 import { describe, expect, it } from 'vitest';
 import KintoneClient from '../src/KintoneClient.js';
 
-const { buildBaseUrl } = KintoneClient;
+const { buildBaseUrl, buildApiBase } = KintoneClient;
+
+describe('buildApiBase', () => {
+    it('ゲストスペースIDが無い場合は、通常のスペース用URL(/k/v1)を返す', () => {
+        expect(buildApiBase({ subdomain: 'example', guestSpaceId: '' })).toBe(
+            'https://example.cybozu.com/k/v1',
+        );
+        expect(buildApiBase({ subdomain: 'example' })).toBe(
+            'https://example.cybozu.com/k/v1',
+        );
+    });
+
+    it('ゲストスペースIDがある場合は、ゲストスペース用URL(/k/guest/ID/v1)を返す', () => {
+        expect(buildApiBase({ subdomain: 'example', guestSpaceId: '12' })).toBe(
+            'https://example.cybozu.com/k/guest/12/v1',
+        );
+    });
+});
 
 describe('buildBaseUrl', () => {
     it('サブドメイン名のみを指定した場合、kintoneのベースURLを組み立てる', () => {

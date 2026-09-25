@@ -11,6 +11,8 @@
 //                                                できるよう、任意のADMIN_NOTIFY_EMAILを
 //                                                読み込むように追加(Mailer.jsのnotifyAdmin
 //                                                OnFailureが使用)。未設定でも動作する
+//  V1.4.0     2026/09/25        J.Yamamoto      :ゲストスペース内のアプリに対応するため、
+//                                                任意のKINTONE_GUEST_SPACE_IDを読み込むように追加
 // ----------------------------------------------------------------------
 //     ModuleName  : 設定読み込み(Config.js)
 //     Description : スクリプトプロパティ(PropertiesService)から機密情報を読み込む。
@@ -75,10 +77,20 @@ function loadConfig() {
         );
     }
 
+    // 任意設定。アプリがゲストスペースにある場合のみ、そのスペースIDを指定する。
+    // ゲストスペースのREST APIは /k/guest/スペースID/v1/ 配下のURLになるため。
+    const guestSpaceId = props.KINTONE_GUEST_SPACE_ID || '';
+    if (guestSpaceId && !/^\d+$/.test(guestSpaceId)) {
+        throw new Error(
+            `KINTONE_GUEST_SPACE_IDは数字のみで指定してください(現在の値: ${guestSpaceId})。`,
+        );
+    }
+
     return {
         subdomain: props.KINTONE_SUBDOMAIN,
         apiToken: props.KINTONE_API_TOKEN,
         appId: props.KINTONE_APP_ID,
+        guestSpaceId,
         // 任意設定。システム全体に影響するエラー(認証失敗等)の通知先。
         // 未設定でも動作するが、その場合はGASの実行ログでしか気付けなくなる。
         adminNotifyEmail: props.ADMIN_NOTIFY_EMAIL || '',

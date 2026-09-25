@@ -42,6 +42,11 @@
 //                                                「送信処理中」のまま残った行を、追加のAPI
 //                                                リクエスト無しで次回実行時に検出できるようにする
 //                                                (ReminderService.jsのpickStuckProcessingRows)
+//  V2.3.0     2026/09/25        J.Yamamoto      :ゲストスペース内のアプリではREST APIのURLが
+//                                                /k/guest/スペースID/v1/ 配下になるため、
+//                                                /k/v1/固定だとレコード取得に失敗していた。
+//                                                buildApiBaseを追加し、config.guestSpaceIdが
+//                                                あればゲストスペース用のURLを使う
 // ----------------------------------------------------------------------
 //     ModuleName  : kintone REST APIクライアント(KintoneClient.js)
 //     Description : UrlFetchAppによるkintone REST API呼び出しのみを行う。
@@ -60,6 +65,21 @@
 function buildBaseUrl(config) {
     const subdomain = config.subdomain.replace(/\.cybozu\.com\/?$/i, '');
     return `https://${subdomain}.cybozu.com`;
+}
+
+/**
+ * REST APIのベースURL(/v1まで)を返す。
+ * 通常のスペース: https://xxx.cybozu.com/k/v1
+ * ゲストスペース: https://xxx.cybozu.com/k/guest/スペースID/v1
+ * (公式ドキュメント「kintone REST APIの共通仕様」のURLを参照)
+ * @param {Object} config - loadConfig()の戻り値
+ * @returns {string}
+ */
+function buildApiBase(config) {
+    const base = buildBaseUrl(config);
+    return config.guestSpaceId
+        ? `${base}/k/guest/${config.guestSpaceId}/v1`
+        : `${base}/k/v1`;
 }
 
 /**
@@ -113,7 +133,7 @@ function fetchTargetRecords(config, nowIso) {
             `or (${F.SEND_STATUS} in ("${STATUS.PROCESSING}") and $id > ${lastId}) ` +
             `order by $id asc limit ${RECORDS_PER_REQUEST}`;
         const url =
-            `${buildBaseUrl(config)}/k/v1/records.json` +
+            `${buildApiBase(config)}/records.json` +
             `?app=${encodeURIComponent(config.appId)}&query=${encodeURIComponent(seekQuery)}`;
 
         const response = UrlFetchApp.fetch(url, {
@@ -182,7 +202,7 @@ function updateScheduleRow(
 
     const tableValue = scheduleRows.map((row) => ({ id: row.id, value: row.value }));
 
-    const response = UrlFetchApp.fetch(`${buildBaseUrl(config)}/k/v1/record.json`, {
+    const response = UrlFetchApp.fetch(`${buildApiBase(config)}/record.json`, {
         method: 'put',
         headers: {
             ...buildAuthHeader(config),
@@ -212,5 +232,5 @@ function updateScheduleRow(
 // Vitestからのテスト用に、副作用を持たないbuildBaseUrlのみをCommonJS export経由で
 // 公開する。GAS実行時はmoduleが存在しないため、このブロックは実行されない。
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { buildBaseUrl };
+    module.exports = { buildBaseUrl, buildApiBase };
 }
