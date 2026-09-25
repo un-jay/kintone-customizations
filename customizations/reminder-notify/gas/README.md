@@ -86,6 +86,8 @@ setupTrigger(5); // 5分間隔
 
 ## 既知の制約
 
+- kintone環境で**セキュアアクセス**を使用している場合、通常のスペースのアプリはGASから呼び出せません（`UrlFetchApp`はクライアント証明書を送れず、`403 Forbidden`のHTMLが返ります）。アプリが**ゲストスペース内**にあれば、`KINTONE_GUEST_SPACE_ID`を設定することで、APIトークンだけで実行できます（実機確認済み。詳細は[ルートのCLAUDE.md](../../../CLAUDE.md#ゲストスペースとセキュアアクセス)）
+
 - Google Apps Scriptの1回の実行時間上限は6分です。対象レコード数が多い場合は、トリガー間隔や抽出条件を調整してください。
 - `UrlFetchApp`・`MailApp` にはGoogleアカウントの1日あたりのクォータがあります（[Apps Scriptの割り当て](https://developers.google.com/apps-script/guides/services/quotas)を参照）。送信前に`MailApp.getRemainingDailyQuota()`で残数を確認し、不足していればエラーとして扱う
 - トリガー間隔は、kintoneのAPIリクエスト数上限を考慮し、短くしすぎないでください（既定5分)。詳細は[ルートのCLAUDE.md](../../../CLAUDE.md#apiリクエスト数について)を参照。**精度と消費数はトレードオフ**で、1分間隔にすればより時刻通りに送信できるが1日あたりのAPIリクエスト数消費は5分間隔の5倍になる。5分間隔では、送信予定時刻から最大5分弱の遅延が起こりうる点を踏まえて間隔を決めること
