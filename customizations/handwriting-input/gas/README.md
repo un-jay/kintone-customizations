@@ -72,6 +72,21 @@ npm run deploy
 
 `src/appsscript.json`に`webapp`設定（`access: ANYONE_ANONYMOUS`, `executeAs: USER_DEPLOYING`）をあらかじめ含めているため、Apps Scriptエディタから手動でデプロイ設定をする場合も、「アクセスできるユーザー」を「全員」に、「次のユーザーとして実行」を「自分」にしてください。
 
+### 4-2. コードを更新したときの再デプロイ（重要）
+
+Web Appは、**コードを書き換えて`clasp push`（またはGASエディタへ貼り付け）しただけでは、公開中のWeb Appには反映されません**。デプロイ済みの「バージョン」が古いコードのまま動き続けるため、必ず再デプロイが必要です（スクリプトプロパティの変更だけなら不要です）。
+
+**URLを変えずに更新する**（推奨。`desktop.js`の`GAS_WEB_APP_URL`を書き換えなくて済む）:
+
+```bash
+npx clasp deployments                       # 更新したいデプロイのID(AKfycb…)を確認。@HEADではなく、@1などバージョン番号付きの方
+npx clasp deploy --deploymentId <デプロイID>
+```
+
+または、GASエディタで［デプロイ］→［デプロイを管理］→ 対象のデプロイの鉛筆アイコン →［バージョン］を「新バージョン」にして［デプロイ］。
+
+**注意**: `npm run deploy`（＝`clasp deploy`をIDなしで実行）は、**新しいデプロイを別のURLで作ってしまいます**。古いURLは古いコードのまま残り、`desktop.js`のURLも自動では変わらないため、更新したはずなのに動作が変わらない、という状態になります。URLが変わってしまった場合は、`desktop.js`の`GAS_WEB_APP_URL`を新しいURLへ書き換えて、kintoneへ再アップロードしてください。
+
 ### 5. 動作確認（curlで直接テスト）
 
 kintone側の実装を待たずに、Web App単体の動作を確認できます。
