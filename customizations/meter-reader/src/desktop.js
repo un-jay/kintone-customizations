@@ -715,17 +715,24 @@
                 const record = kintone.mobile.app.record.get();
                 const tableValue = record.record[target.tableField].value;
                 const rowIndex = tableValue.length;
-                tableValue.push(
-                    buildMeterTableRow(target.fields, {
-                        name: ui.nameInput.value,
-                        meterTypeLabel: ui.typeSelect.value,
-                        value: ui.valueInput.value,
-                        unit: ui.unitInput.value,
-                        confidenceLabel: confidenceToLabel(currentConfidence),
-                        note: ui.noteTextarea.value,
-                    }),
-                );
+                const rowInput = {
+                    name: ui.nameInput.value,
+                    meterTypeLabel: ui.typeSelect.value,
+                    value: ui.valueInput.value,
+                    unit: ui.unitInput.value,
+                    confidenceLabel: confidenceToLabel(currentConfidence),
+                    note: ui.noteTextarea.value,
+                };
+                const newRow = buildMeterTableRow(target.fields, rowInput);
+                tableValue.push(newRow);
                 kintone.mobile.app.record.set(record);
+
+                // 【調査用】追加した行の値が正しく反映されたか、再取得して確認する。
+                const reloaded = kintone.mobile.app.record.get();
+                const reloadedRow = reloaded.record[target.tableField].value[rowIndex];
+                console.log('rowInput', rowInput);
+                console.log('newRow', newRow);
+                console.log('reloadedRow', reloadedRow);
 
                 pendingAttachments.push({
                     tableField: target.tableField,
@@ -736,7 +743,7 @@
 
                 close();
                 notify(
-                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。`,
+                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。\n[調査用]入力=${JSON.stringify(rowInput)}\n[調査用]再取得=${JSON.stringify(reloadedRow && reloadedRow.value)}`,
                     'SUCCESS',
                 );
             } catch (error) {
