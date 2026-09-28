@@ -1,18 +1,20 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/28        J.Yamamoto      :isRetryableStatusCodeのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : GeminiVisionClient.jsのユニットテスト(GeminiVisionClient.test.js)
-//     Description : extractMeterResultFromResponse(副作用を持たない純粋関数)を検証する。
-//                   レスポンスの構造は、generateContentのcandidates[].content.parts[].text
-//                   に構造化出力(JSON文字列)が入る、Gemini APIの標準的なレスポンス
-//                   の形(responseMimeType: "application/json"指定時)を前提にしている。
+//     Description : extractMeterResultFromResponse・isRetryableStatusCode(いずれも
+//                   副作用を持たない純粋関数)を検証する。レスポンスの構造は、
+//                   generateContentのcandidates[].content.parts[].textに構造化出力
+//                   (JSON文字列)が入る、Gemini APIの標準的なレスポンスの形
+//                   (responseMimeType: "application/json"指定時)を前提にしている。
 // ======================================================================
 
 import { describe, expect, it } from 'vitest';
 import GeminiVisionClient from '../src/GeminiVisionClient.js';
 
-const { extractMeterResultFromResponse } = GeminiVisionClient;
+const { extractMeterResultFromResponse, isRetryableStatusCode } = GeminiVisionClient;
 
 function buildResponse(resultObject) {
     return {
@@ -83,5 +85,21 @@ describe('extractMeterResultFromResponse', () => {
         expect(() =>
             extractMeterResultFromResponse({ candidates: [{ content: { parts: [] } }] }),
         ).toThrow();
+    });
+});
+
+describe('isRetryableStatusCode', () => {
+    it('503(高負荷による一時的な利用不可)はリトライ対象とする', () => {
+        expect(isRetryableStatusCode(503)).toBe(true);
+    });
+
+    it('429(レート制限)はリトライ対象とする', () => {
+        expect(isRetryableStatusCode(429)).toBe(true);
+    });
+
+    it('200・400・404等はリトライ対象としない(リクエスト自体の問題のため)', () => {
+        expect(isRetryableStatusCode(200)).toBe(false);
+        expect(isRetryableStatusCode(400)).toBe(false);
+        expect(isRetryableStatusCode(404)).toBe(false);
     });
 });
