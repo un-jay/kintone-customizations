@@ -741,7 +741,7 @@
                 );
             } catch (error) {
                 console.error(error);
-                showError(MSGS.APPLY_FAILED + '\n' + error.message);
+                showError(MSGS.APPLY_FAILED + '\n' + (error.stack || error.message));
             } finally {
                 ui.applyButton.disabled = false;
             }
