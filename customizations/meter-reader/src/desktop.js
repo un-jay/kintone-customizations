@@ -715,6 +715,7 @@
                 const record = kintone.mobile.app.record.get();
                 const tableValue = record.record[target.tableField].value;
                 const rowIndex = tableValue.length;
+                const beforeLength = tableValue.length;
                 const rowInput = {
                     name: ui.nameInput.value,
                     meterTypeLabel: ui.typeSelect.value,
@@ -725,14 +726,15 @@
                 };
                 const newRow = buildMeterTableRow(target.fields, rowInput);
                 tableValue.push(newRow);
-                kintone.mobile.app.record.set(record);
+                const afterPushLength = tableValue.length;
+                const setResult = kintone.mobile.app.record.set(record);
 
                 // 【調査用】追加した行の値が正しく反映されたか、再取得して確認する。
                 const reloaded = kintone.mobile.app.record.get();
-                const reloadedRow = reloaded.record[target.tableField].value[rowIndex];
+                const reloadedTable = reloaded.record[target.tableField].value;
                 console.log('rowInput', rowInput);
                 console.log('newRow', newRow);
-                console.log('reloadedRow', reloadedRow);
+                console.log('reloadedTable', reloadedTable);
 
                 pendingAttachments.push({
                     tableField: target.tableField,
@@ -743,7 +745,7 @@
 
                 close();
                 notify(
-                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。\n[調査用]入力=${JSON.stringify(rowInput)}\n[調査用]再取得=${JSON.stringify(reloadedRow && reloadedRow.value)}`,
+                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。\n[調査用]追加前の行数=${beforeLength}、push後の行数=${afterPushLength}\n[調査用]set()の戻り値=${JSON.stringify(setResult)}\n[調査用]再取得した行数=${reloadedTable.length}\n[調査用]再取得した中身=${JSON.stringify(reloadedTable)}`,
                     'SUCCESS',
                 );
             } catch (error) {
