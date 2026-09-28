@@ -2,9 +2,14 @@
 
 meter-reader kintoneカスタマイズと組み合わせて使う、Google Apps Script(GAS)側の実装です。**Web Appとして公開**し、kintone側の`desktop.js`から呼び出される中継役に専念します。Google Gemini API(マルチモーダルモデル)を呼び出して、画像内のアナログ針メーター・デジタル表示メーターから数値を読み取り、構造化されたJSONとして返します。
 
-## 重要: このREADMEの内容について
+## 重要: 無料枠(Free Tier)について
 
-**このセッションはネットワークポリシーにより`ai.google.dev`(Gemini API公式ドキュメント)へ直接アクセスできず、モデル名・エンドポイント・料金体系・レート制限の最新情報を一次情報から確認できていません。** 以下のセットアップ手順・`src/GeminiVisionClient.js`のリクエスト形式は、既知の情報を基に実装したものです。**導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)および[Google AI Studio](https://aistudio.google.com/)で最新情報を確認してください。**
+このセッションはネットワークポリシーにより`ai.google.dev`へ直接アクセスできないため、Web検索経由での確認になりますが、[Gemini API公式の料金ページ](https://ai.google.dev/gemini-api/docs/pricing)の内容として次の点を確認しています(2026年9月時点)。
+
+- **Free Tierの利用にCloud課金アカウントの紐付けは不要**。有償のTier 1へ移行するには、明示的に課金アカウントを紐付ける操作が必要で、自動的には移行しない
+- Free Tierの「spend-based rate limit(利用額ベースのレート制限)」は"N/A"扱いで、Free Tierには課金の仕組み自体が存在しない。無料枠のリクエスト数の上限(RPM/RPD等)を超えた場合は429エラーになるだけで、課金アカウントを紐付けていない限り自動課金は発生しない
+
+一方で、**具体的なレート制限の数値(1分/1日あたりのリクエスト数)・現行のモデル名・料金体系の細部は、モデルや時期によって変動しており(2025年12月に無料枠が引き下げられたとする第三者記事も複数ある)、出典間で数値が食い違っているため、本READMEでは特定の数値を断定していません。** 以下のセットアップ手順・`src/GeminiVisionClient.js`のリクエスト形式は、既知の情報を基に実装したものです。**導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)・[Gemini APIレート制限ページ](https://ai.google.dev/gemini-api/docs/rate-limits)、および実際に発行したAPIキーのプロジェクトについて[Google AI Studio](https://aistudio.google.com/)の利用量/割り当てページで最新情報を確認してください。**
 
 ## reminder-notify・handwriting-inputのGASとの違い
 
@@ -105,7 +110,7 @@ curl -X POST '<デプロイURL>' \
 
 ## 既知の制約
 
-- **モデル名・無料枠のレート制限・料金体系は、このセッションでは公式ドキュメントへのライブアクセスができず未検証です。** 導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)・[Google AI Studio](https://aistudio.google.com/)で最新情報を確認してください
+- **具体的なレート制限の数値・現行のモデル名は変動するため、本READMEでは断定していません。** 「Free Tierは課金アカウント紐付け不要・自動課金されない」という設計上の前提はWeb検索経由で確認済みですが、導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)・[Google AI Studio](https://aistudio.google.com/)で最新情報を確認してください
 - Google Apps Scriptの1回の実行時間上限は6分。Gemini APIの応答が極端に遅い場合はタイムアウトする可能性がある
 - Web AppのURLは`ANYONE_ANONYMOUS`(認証不要)で公開されるため、URLと共有シークレットの組み合わせが漏れると第三者に無料枠を消費される可能性がある。共有シークレットは推測されにくいランダムな文字列にすること
 - アナログ針メーターの読み取りは、目盛りの間隔・照明条件・撮影角度・針と目盛りの重なり方に大きく左右される。100%の精度は保証できないため、kintone側で必ず作業者が確認する運用を前提とする

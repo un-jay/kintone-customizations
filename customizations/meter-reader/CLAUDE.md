@@ -14,8 +14,10 @@
 
 - **通常のOCR(文字認識)エンジンでは、アナログ針メーターの値を読み取れない**。OCRは「画像に写っている文字列を認識する」技術であり、針の角度・目盛りの位置関係から数値を推定するには、画像全体を意味的に理解する推論が必要になる。[`handwriting-input`](../handwriting-input)カスタマイズで採用したAzure AI Vision(Read機能)はOCR専用のため、デジタル表示の数字は読めてもアナログ針メーターには対応できない
 - 上記の理由から、本カスタマイズでは**マルチモーダル対応の生成AI(Google Gemini API)**をバックエンド(GAS Web App経由)で呼び出す方式を採用した。画像とプロンプトを渡すと、計器の種類判定・目盛りからの数値推定・単位の読み取り・自信度の自己申告までを1回の呼び出しでまとめて行える
-- **Google AI Studio発行のAPIキー(Generative Language API)は、Google Cloud Vision APIとは異なり、Cloud課金アカウントを紐付けずに取得できる**。無料枠を超えた場合はエラー(429)になるだけで、курьcourse課金アカウントが無ければ自動課金されない。この性質は`handwriting-input`のAzure AI Vision(F0無料枠)採用時の判断基準(「無料枠超過時に自動課金されない」)と同じ考え方に基づく
-- **【要検証・既知の制約】本セッションはネットワークポリシーにより`ai.google.dev`(Gemini API公式ドキュメント)へ直接アクセスできず、モデル名・無料枠の具体的なレート制限・料金体系をこのセッション内で最新の一次情報から確認できていない。** `gas/src/GeminiVisionClient.js`のモデル名・エンドポイント・リクエスト形式(`responseSchema`等)は、公開されていた情報を基にした実装であり、**导入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)で最新のモデル名・料金体系・レート制限を確認すること**
+- **Google AI Studio発行のAPIキー(Generative Language API)は、Google Cloud Vision APIとは異なり、Cloud課金アカウントを紐付けずに取得できる**。無料枠(Free Tier)を超えた場合はエラー(429)になるだけで、課金アカウントを紐付けていなければ自動課金されない。この性質は`handwriting-input`のAzure AI Vision(F0無料枠)採用時の判断基準(「無料枠超過時に自動課金されない」)と同じ考え方に基づく
+- **[Gemini API公式の料金ページ](https://ai.google.dev/gemini-api/docs/pricing)によれば、Free Tierは「Cloud課金アカウントの紐付け」を要件としておらず、有償のTier 1へ移行するには明示的に課金アカウントを紐付ける操作が必要(自動的にはTier 1へ移行しない)。またFree Tierの「spend-based rate limit(利用額ベースのレート制限)」は"N/A"と記載されており、Free Tierには課金そのものの仕組みが存在しない**。この点は2026年9月時点でWeb検索経由により確認済み(このセッションはネットワークポリシーにより`ai.google.dev`への直接アクセスができないため、検索エンジンの要約経由での確認)
+- **【未確認・要現地確認】具体的なレート制限の数値(1分あたりのリクエスト数・1日あたりのリクエスト数等)はモデル・時期によって変動しており、2025年12月に無料枠が引き下げられたとする複数の第三者記事もあるなど、公開されている数値には出典間で食い違いがある。本CLAUDE.mdでは特定の数値を断定しない。** 導入時は、発行したAPIキーのプロジェクトについて、[Google AI Studio](https://aistudio.google.com/)の当該プロジェクトの利用量/割り当てページで実際の数値を確認すること
+- `gas/src/GeminiVisionClient.js`のモデル名・エンドポイント・リクエスト形式(`responseSchema`等)は、公開されていた情報を基にした実装であり、**導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)で最新のモデル名・料金体系・レート制限を確認すること**
 
 ## 全体構成
 
@@ -116,5 +118,5 @@ GAS Web Appは仕様上、`doPost`のレスポンスに任意のHTTPステータ
 - ゲストスペース内のアプリでも動作するよう、写真のアップロードURL・REST APIのURLは`kintone.api.url(path, true)`でゲストスペースを自動判定している([ルートのCLAUDE.md](../../CLAUDE.md#ゲストスペースとセキュアアクセス)参照。ゲストスペースでの実機確認は未実施)。GAS Web App側はkintoneを呼ばない(Geminiへ中継するだけ)ため、ゲストスペース・セキュアアクセスの影響を受けない
 - カメラ起動には`<input type="file" capture="environment">`を使用するブラウザ標準機能に依存する。**スマートフォンの実機でのカメラ起動・アップロード・Gemini APIの実際の認識精度は未確認**(jsdomを使ったVitestでのAPI呼び出し・DOM操作・純粋関数の単体テストのみ)
 - アナログ針メーターの読み取り精度は、目盛りの間隔・照明条件・撮影角度・針と目盛りの重なり方に大きく左右される。100%の精度は保証できないため、必ず作業者が確認する運用を前提とする(自信度表示・警告はその補助に過ぎない)
-- Gemini APIのモデル名・料金体系・レート制限は変更される可能性があり、このセッションでは公式ドキュメントへのライブアクセスができなかったため最新情報を検証できていない。導入前に[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)で確認すること(詳細は[gas/README.md](./gas/README.md)の既知の制約を参照)
+- Gemini APIのモデル名・具体的なレート制限の数値は変更される可能性がある(2025年12月に無料枠が引き下げられたとする報告もある)。「Free Tierは課金アカウント紐付け不要・自動課金されない」という設計上の前提はWeb検索経由で確認済みだが、具体的な数値・現行のモデル名は導入時に[Google AI Studio](https://aistudio.google.com/)・[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)で確認すること(詳細は[gas/README.md](./gas/README.md)の既知の制約を参照)
 - 前述の通り、テーブルの手動並べ替え・行削除を保存前に行うと、添付ファイルの反映先がずれる可能性がある
