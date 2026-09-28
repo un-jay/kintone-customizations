@@ -1,6 +1,10 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/28        J.Yamamoto      :実機確認で「503(高負荷による一時的な
+//                                                利用不可)」が発生したため、503/429の
+//                                                場合のみ数秒空けて最大3回まで自動リトライ
+//                                                する処理を追加
 // ----------------------------------------------------------------------
 //     ModuleName  : Gemini APIクライアント(GeminiVisionClient.js)
 //     Description : Google Gemini API(マルチモーダルモデル)のgenerateContentを
@@ -61,8 +65,27 @@ const METER_RESPONSE_SCHEMA = {
     required: ['meterType', 'value', 'unit', 'confidence', 'rawLabel'],
 };
 
+/** リトライする最大試行回数(1回目 + 自動リトライ2回 = 最大3回) */
+const MAX_ATTEMPTS = 3;
+
+/** リトライ前に待つ時間(ミリ秒)の基準値。試行回数に応じて線形に延ばす(2秒・4秒)。 */
+const RETRY_BASE_DELAY_MS = 2000;
+
+/**
+ * 自動リトライの対象とするHTTPステータスコードかどうかを判定する。
+ * 503(UNAVAILABLE: 一時的な高負荷)・429(RESOURCE_EXHAUSTED: レート制限)は、
+ * 実機確認で発生を確認済みで、いずれも時間を置けば解消しうる一時的なエラーのため対象とする。
+ * それ以外(400/404等、リクエスト自体が誤っている場合)はリトライしても解決しないため対象外。
+ * @param {number} statusCode
+ * @returns {boolean}
+ */
+function isRetryableStatusCode(statusCode) {
+    return statusCode === 503 || statusCode === 429;
+}
+
 /**
  * 画像(Base64文字列)をGemini APIへ送り、メーターの読み取り結果を取得する。
+ * 503/429の場合のみ、数秒空けて最大MAX_ATTEMPTS回まで自動リトライする。
  * @param {Object} config      - loadConfig()の戻り値
  * @param {string} base64Image - JPEG画像のBase64文字列(data URLのプレフィックスは含まない)
  * @returns {{meterType: string, value: (number|null), unit: string, confidence: string, rawLabel: string}}
@@ -83,14 +106,25 @@ function readMeterFromImage(config, base64Image) {
             responseSchema: METER_RESPONSE_SCHEMA,
         },
     };
-
-    const response = UrlFetchApp.fetch(url, {
+    const options = {
         method: 'post',
         contentType: 'application/json',
         headers: { 'x-goog-api-key': config.geminiApiKey },
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
-    });
+    };
+
+    let response;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        response = UrlFetchApp.fetch(url, options);
+        const statusCode = response.getResponseCode();
+        if (statusCode === 200 || !isRetryableStatusCode(statusCode)) {
+            break;
+        }
+        if (attempt < MAX_ATTEMPTS) {
+            Utilities.sleep(RETRY_BASE_DELAY_MS * attempt);
+        }
+    }
 
     if (response.getResponseCode() !== 200) {
         throw new Error(
@@ -128,8 +162,12 @@ function extractMeterResultFromResponse(response) {
     };
 }
 
-// Vitestからのテスト用に、副作用を持たないextractMeterResultFromResponseのみをCommonJS export
-// 経由で公開する。GAS実行時はmoduleが存在しないため、このブロックは実行されない。
+// Vitestからのテスト用に、副作用を持たない純粋関数のみをCommonJS export経由で公開する。
+// GAS実行時はmoduleが存在しないため、このブロックは実行されない。
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { extractMeterResultFromResponse, METER_RESPONSE_SCHEMA };
+    module.exports = {
+        extractMeterResultFromResponse,
+        isRetryableStatusCode,
+        METER_RESPONSE_SCHEMA,
+    };
 }
