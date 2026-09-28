@@ -9,7 +9,15 @@ meter-reader kintoneカスタマイズと組み合わせて使う、Google Apps 
 - **Free Tierの利用にCloud課金アカウントの紐付けは不要**。有償のTier 1へ移行するには、明示的に課金アカウントを紐付ける操作が必要で、自動的には移行しない
 - Free Tierの「spend-based rate limit(利用額ベースのレート制限)」は"N/A"扱いで、Free Tierには課金の仕組み自体が存在しない。無料枠のリクエスト数の上限(RPM/RPD等)を超えた場合は429エラーになるだけで、課金アカウントを紐付けていない限り自動課金は発生しない
 
-一方で、**具体的なレート制限の数値(1分/1日あたりのリクエスト数)・現行のモデル名・料金体系の細部は、モデルや時期によって変動しており(2025年12月に無料枠が引き下げられたとする第三者記事も複数ある)、出典間で数値が食い違っているため、本READMEでは特定の数値を断定していません。** 以下のセットアップ手順・`src/GeminiVisionClient.js`のリクエスト形式は、既知の情報を基に実装したものです。**導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)・[Gemini APIレート制限ページ](https://ai.google.dev/gemini-api/docs/rate-limits)、および実際に発行したAPIキーのプロジェクトについて[Google AI Studio](https://aistudio.google.com/)の利用量/割り当てページで最新情報を確認してください。**
+2026年9月、開発者がGemini自身に`ai.google.dev`の該当ページを出典として問い合わせたところ、Free Tierのレート制限は次の通りとの回答を得た(**公式ページの直接取得ではなくAIの回答であり、Gemini自身も「保証値ではない」と述べている点に注意**)。
+
+| モデル                | RPM    | TPM     | RPD   |
+| --------------------- | ------ | ------- | ----- |
+| Gemini 2.5 Flash      | 10〜15 | 250,000 | 250   |
+| Gemini 2.5 Pro        | 5      | 250,000 | 100   |
+| Gemini 2.5 Flash-Lite | 15     | 250,000 | 1,000 |
+
+**具体的な数値・現行のモデル名は、モデルや時期によって変動しうる(2025年12月に無料枠が引き下げられたとする第三者記事も複数ある)ため、本READMEはこれらの数値を保証しません。** 以下のセットアップ手順・`src/GeminiVisionClient.js`のリクエスト形式は、既知の情報を基に実装したものです。**導入前に必ず[Gemini API公式ドキュメント](https://ai.google.dev/gemini-api/docs)・[Gemini APIレート制限ページ](https://ai.google.dev/gemini-api/docs/rate-limits)、および実際に発行したAPIキーのプロジェクトについて[Google AI Studio](https://aistudio.google.com/)の利用量/割り当てページで最新情報を確認してください。**
 
 ## reminder-notify・handwriting-inputのGASとの違い
 
