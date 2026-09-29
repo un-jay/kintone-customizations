@@ -1,9 +1,12 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/29        J.Yamamoto      :PC対応(PLATFORM切り替え方式)に伴い、
+//                                                PC用イベントも登録されることを検証する
+//                                                テストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのイベント登録テスト(desktop.events.test.js)
-//     Description : モバイル専用のイベントが登録され、ボタン設置・オーバーレイ表示・
+//     Description : PC・モバイル両方のイベントが登録され、ボタン設置・オーバーレイ表示・
 //                   保存成功時の早期リターンが期待通りに動くことを検証する。
 //                   写真の実際の読み込み(Image/canvasのデコード)はjsdomでは
 //                   検証できないため、「計算処理」の純粋関数はdesktop.test.jsで
@@ -33,17 +36,93 @@ afterEach(() => {
 });
 
 describe('イベント登録', () => {
-    it('モバイル用の表示/保存成功イベントが登録される(PC用は登録しない)', () => {
+    it('PC・モバイル両方の表示/保存成功イベントが登録される', () => {
         [
+            'app.record.create.show',
+            'app.record.edit.show',
+            'app.record.create.submit.success',
+            'app.record.edit.submit.success',
             'mobile.app.record.create.show',
             'mobile.app.record.edit.show',
             'mobile.app.record.create.submit.success',
             'mobile.app.record.edit.submit.success',
         ].forEach((name) => expect(handlers[name]).toBeTypeOf('function'));
+    });
+});
 
-        ['app.record.create.show', 'app.record.edit.show'].forEach((name) =>
-            expect(handlers[name]).toBeUndefined(),
+describe('PC画面', () => {
+    function setupDesktopKintone() {
+        const spaces = {};
+        const notification = vi.fn();
+        const apiMock = vi.fn();
+        globalThis.kintone.app = {
+            record: {
+                getSpaceElement: (id) => {
+                    spaces[id] = spaces[id] || document.createElement('div');
+                    return spaces[id];
+                },
+                get: () => ({
+                    record: { METER_READINGS: { value: [] } },
+                }),
+                set: vi.fn(),
+            },
+        };
+        globalThis.kintone.showNotification = notification;
+        globalThis.kintone.api = apiMock;
+        globalThis.kintone.api.url = (path) => path;
+        return { spaces, notification, apiMock };
+    }
+
+    it('スペース要素へボタンを設置し、押すとオーバーレイ(撮影・入力欄付き)を開く', () => {
+        const { spaces } = setupDesktopKintone();
+        const event = { record: {} };
+
+        const returned = handlers['app.record.create.show'](event);
+        expect(returned).toBe(event);
+
+        const button = spaces.space_meter_add.querySelector(
+            '.meter-reader-trigger-button',
         );
+        expect(button).not.toBeNull();
+
+        button.click();
+        const overlay = document.querySelector('.meter-reader-overlay');
+        expect(overlay).not.toBeNull();
+        expect(document.body.style.overflow).toBe('hidden');
+
+        const inputs = overlay.querySelectorAll('input[type=file]');
+        expect(inputs).toHaveLength(1);
+
+        expect(overlay.querySelector('.meter-reader-select')).not.toBeNull();
+        expect(overlay.querySelector('.meter-reader-textarea')).not.toBeNull();
+
+        const buttonTexts = [...overlay.querySelectorAll('button')].map(
+            (b) => b.textContent,
+        );
+        expect(buttonTexts).toContain('📷 写真を撮る／選ぶ');
+        expect(buttonTexts).toContain('数値を読み取る');
+    });
+
+    it('同じ画面で2回showが発火してもボタンは重複しない', () => {
+        const { spaces } = setupDesktopKintone();
+        handlers['app.record.edit.show']({});
+        handlers['app.record.edit.show']({});
+        expect(
+            spaces.space_meter_add.querySelectorAll('.meter-reader-trigger-button'),
+        ).toHaveLength(1);
+    });
+
+    it('保留中の添付ファイルが無い場合、保存成功時は何もしない(通知・API呼び出しなし)', async () => {
+        const { notification, apiMock } = setupDesktopKintone();
+        const event = {
+            appId: 1,
+            recordId: 2,
+            record: { METER_READINGS: { value: [] }, $revision: { value: '1' } },
+        };
+        const returned = await handlers['app.record.create.submit.success'](event);
+        expect(returned).toBe(event);
+        expect(notification).not.toHaveBeenCalled();
+        expect(apiMock).not.toHaveBeenCalled();
     });
 });
 

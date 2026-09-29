@@ -1,6 +1,6 @@
 # meter-reader
 
-アナログ針メーター(圧力計・温度計等)やデジタル表示メーターを撮影するだけで、写っている数値を自動認識してkintoneのテーブルへ記録するkintoneカスタマイズ + GAS(Google Gemini APIへの中継Web App)です。**モバイル専用**(スマートフォン・タブレットでの利用を前提)。
+アナログ針メーター(圧力計・温度計等)やデジタル表示メーターを撮影するだけで、写っている数値を自動認識してkintoneのテーブルへ記録するkintoneカスタマイズ + GAS(Google Gemini APIへの中継Web App)です。現場の作業者がスマートフォン・タブレットで撮影する運用を主に想定していますが、**PCから既存の画像ファイルをアップロードして読み取ることもできます**(PC・モバイルの両方に対応)。
 
 ## 背景
 
@@ -37,7 +37,7 @@
 ```mermaid
 sequenceDiagram
     actor User as 作業者
-    participant Kintone as kintone(モバイル レコード追加/編集画面)
+    participant Kintone as kintone(PC・モバイル レコード追加/編集画面)
     participant GAS as GAS Web App
     participant Gemini as Gemini API
 
@@ -53,7 +53,7 @@ sequenceDiagram
     Kintone-->>User: 種類・数値・単位・自信度・AIのコメントを編集可能な形で表示
     User->>Kintone: 内容を確認・修正し「この内容を追加する」をタップ
     Kintone->>Kintone: 写真をkintoneへアップロード(fileKey取得、まだ添付はしない)
-    Kintone->>Kintone: テーブルへ1行追加(kintone.mobile.app.record.set())
+    Kintone->>Kintone: テーブルへ1行追加(record.set())
     User->>Kintone: (2台目以降があれば同じボタンを繰り返しタップ)
     User->>Kintone: kintone本来の「保存」ボタンをタップ
     Kintone->>Kintone: レコード保存成功(submit.successイベント)
@@ -117,7 +117,7 @@ const GAS_WEB_APP_URL =
 const GAS_SHARED_SECRET = 'REPLACE_WITH_SHARED_SECRET';
 ```
 
-「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下を**「モバイル用」**にアップロードしてください(本カスタマイズはモバイル専用のため、PC用へのアップロードは不要です)。
+「アプリの設定」→「JavaScript / CSSでカスタマイズ」から、以下を**「PC用」「モバイル用」の両方**にアップロードしてください(同じファイルを両方にアップロードして共用する方式です。片方だけにアップロードすると、そちらの画面でしかボタンが表示されません)。
 
 - JavaScript: `src/desktop.js`
 - CSS: `src/css/desktop.css`
@@ -127,8 +127,8 @@ const GAS_SHARED_SECRET = 'REPLACE_WITH_SHARED_SECRET';
 ## 動作確認済みの範囲・未検証の範囲(正直な現状)
 
 - テーブルへの行追加・添付ファイルの2段階反映(`buildMeterAttachmentPatch`)・認識結果のパース・数値/ラベルの正規化処理は、jsdomを使ったVitestで単体テスト済み(`npm run test`)
-- ボタン設置・オーバーレイ表示・キャンセル時のスクロール固定解除等のモバイルAPI呼び出しも、jsdomを使ったVitestで検証済み
-- **スマートフォンの実機(iOS Safari・Android Chrome)でのカメラ起動・アップロードは未確認**
+- ボタン設置・オーバーレイ表示・キャンセル時のスクロール固定解除等のPC・モバイル両方のAPI呼び出しも、jsdomを使ったVitestで検証済み
+- **スマートフォンの実機(iOS Safari・Android Chrome)でのカメラ起動・アップロード、PCブラウザでのファイル選択・アップロードは未確認**
 - **Gemini APIによる実際のメーター読み取り精度(特にアナログ針メーターの角度からの数値推定精度)は未検証**。導入前に、実際の顧客の現場にあるメーターの写真サンプルで認識精度を確認してください
 - GAS Web Appのデプロイ・Gemini APIの疎通確認手順は[gas/README.md](./gas/README.md)のcurlでの動作確認手順を参照してください
 
