@@ -220,6 +220,10 @@
      * 【重要】kintoneの仕様上、JavaScript APIでテーブルへ新規行を追加する場合、
      * 各サブフィールドにフィールドタイプ(type)の指定が必要
      * (公式ドキュメント「フィールドの値を書き換える」のテーブルの注意事項を参照)。
+     * 【実機確認で判明】添付ファイル(photo)欄を省略すると、行ごとkintoneに無視される
+     * (テーブルの全サブフィールドが揃っていない不完全な行とみなされる)ことを実機で確認した。
+     * 添付ファイルフィールド自体はrecord.set()で値を書き換えられない仕様のため、値は空配列
+     * のままにし、キー自体は必ず含める。
      * @param {Object} fields - METER_TARGETSの1要素のfields
      * @param {Object} input  - {name, meterTypeLabel, value, unit, confidenceLabel, note}
      * @returns {Object} テーブルのvalue配列へpushする行オブジェクト
@@ -239,6 +243,7 @@
                     value: input.confidenceLabel || '',
                 },
                 [fields.note]: { type: 'MULTI_LINE_TEXT', value: input.note || '' },
+                [fields.photo]: { type: 'FILE', value: [] },
             },
         };
     }

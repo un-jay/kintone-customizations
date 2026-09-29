@@ -160,6 +160,7 @@ describe('buildMeterTableRow', () => {
         unit: 'METER_UNIT',
         confidence: 'METER_CONFIDENCE',
         note: 'METER_NOTE',
+        photo: 'METER_PHOTO',
     };
 
     it('入力値からテーブル行のvalueオブジェクトを組み立てる(フィールドタイプ付き)', () => {
@@ -183,6 +184,7 @@ describe('buildMeterTableRow', () => {
                     type: 'MULTI_LINE_TEXT',
                     value: '目盛り0〜10、指針は6と7の間',
                 },
+                METER_PHOTO: { type: 'FILE', value: [] },
             },
         });
     });
@@ -195,6 +197,11 @@ describe('buildMeterTableRow', () => {
         expect(row.value.METER_UNIT.value).toBe('');
         expect(row.value.METER_CONFIDENCE.value).toBe('');
         expect(row.value.METER_NOTE.value).toBe('');
+    });
+
+    it('添付ファイル欄は省略せず、空配列のキーとして含める(省略すると行ごと無視されるため)', () => {
+        const row = calc.buildMeterTableRow(fields, {});
+        expect(row.value.METER_PHOTO).toEqual({ type: 'FILE', value: [] });
     });
 });
 
