@@ -1,12 +1,24 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/28        J.Yamamoto      :実機確認用に、追加失敗時のエラー表示を
+//                                                error.messageからerror.stackへ変更
+//  V1.2.0     2026/09/28        J.Yamamoto      :実機確認用に、テーブルへの行追加処理の
+//                                                調査用ログ(入力値・push後の行数・
+//                                                再取得した中身)を追加
+//  V1.3.0     2026/09/29        J.Yamamoto      :実機確認で判明した「添付ファイル欄を
+//                                                省略すると行ごと無視される」不具合を修正
+//                                                (buildMeterTableRowに空の添付ファイル欄
+//                                                を明示的に含めるようにした)
+//  V1.4.0     2026/09/29        J.Yamamoto      :PC対応を追加(handwriting-inputと同じ
+//                                                PLATFORM切り替え方式で、PC・モバイル
+//                                                両方のイベント・APIに対応)
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : アナログ針メーター・デジタル表示メーターを撮影し、GAS Web App
 //                   経由でGemini API(マルチモーダルAI)により数値を読み取って、
 //                   テーブル(サブテーブル)フィールドへ1行ずつ追加するカスタマイズ。
-//                   モバイル専用(kintone.mobile.*のみを使用)。
+//                   PC・モバイルの両方に対応(handwriting-inputと同じPLATFORM切り替え方式)。
 //                   対象アプリはMETER_TARGETSに定義したテーブル・フィールドコード・
 //                   スペース要素IDで作成されている前提。詳細はCLAUDE.mdを参照。
 // ======================================================================
@@ -417,8 +429,8 @@
 
     /**
      * 保存済みレコードへ、テーブル行の添付ファイルフィールドの値をREST APIで反映する。
-     * 【重要】kintone.mobile.app.record.set()は添付ファイルフィールドへ値をセットできない
-     * 仕様(公式ドキュメントの制限事項を参照。テーブル内でも同様)のため、レコードが
+     * 【重要】record.set()は添付ファイルフィールドへ値をセットできない仕様
+     * (公式ドキュメントの制限事項を参照。テーブル内でも同様)のため、レコードが
      * 保存された後にREST APIで改めて更新する必要がある。
      * @param {number} appId
      * @param {string} recordId
@@ -610,13 +622,34 @@
     }
 
     /**
-     * メーター読み取りオーバーレイを開き、撮影→読み取り→確認→追加の一連の操作を仲介する。
-     * モバイル専用のため、kintone.mobile.app.record.*のAPIを直接呼び出す。
-     * @param {Object} target - METER_TARGETSの1要素
+     * PC用・モバイル用でkintone JS APIの名前空間が異なる(kintone.app.* と
+     * kintone.mobile.app.*)ため、画面ごとに使うAPIをここで切り替える。
+     * 同じjs/cssをPC用・モバイル用の両方にアップロードして共用する
+     * (`handwriting-input`と同じ方式)。
+     * (kintone.mobileはPC画面には存在しないため、必ず呼び出し時に評価する)
      */
-    function openMeterOverlay(target) {
-        const notify = (text, type = 'INFO') =>
-            kintone.mobile.showNotification(type, text);
+    const PLATFORM = {
+        desktop: {
+            getSpaceElement: (id) => kintone.app.record.getSpaceElement(id),
+            getRecord: () => kintone.app.record.get(),
+            setRecord: (record) => kintone.app.record.set(record),
+            notify: (text, type) => kintone.showNotification(type, text),
+        },
+        mobile: {
+            getSpaceElement: (id) => kintone.mobile.app.record.getSpaceElement(id),
+            getRecord: () => kintone.mobile.app.record.get(),
+            setRecord: (record) => kintone.mobile.app.record.set(record),
+            notify: (text, type) => kintone.mobile.showNotification(type, text),
+        },
+    };
+
+    /**
+     * メーター読み取りオーバーレイを開き、撮影→読み取り→確認→追加の一連の操作を仲介する。
+     * @param {Object} target   - METER_TARGETSの1要素
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
+     */
+    function openMeterOverlay(target, platform) {
+        const notify = (text, type = 'INFO') => platform.notify(text, type);
         // kintoneの通知は全画面オーバーレイの背面に隠れて見えないことがあるため、
         // エラーはオーバーレイ内の状態表示にも出す。
         const showStatus = (text, isError = false, isBusy = false) => {
@@ -712,12 +745,12 @@
             ui.applyButton.disabled = true;
             showStatus(UI.APPLYING_LABEL, false, true);
             try {
-                // 添付ファイルフィールドはkintone.mobile.app.record.set()で値をセットできない
+                // 添付ファイルフィールドはrecord.set()で値をセットできない
                 // (公式ドキュメントの制限事項を参照)ため、fileKeyだけ保持しておき、
                 // レコード保存成功後(submit.successイベント)にREST APIで反映する。
                 const fileKey = await uploadFileToKintone(resizedBlob, 'meter.jpg');
 
-                const record = kintone.mobile.app.record.get();
+                const record = platform.getRecord();
                 const tableValue = record.record[target.tableField].value;
                 const rowIndex = tableValue.length;
                 const beforeLength = tableValue.length;
@@ -732,10 +765,10 @@
                 const newRow = buildMeterTableRow(target.fields, rowInput);
                 tableValue.push(newRow);
                 const afterPushLength = tableValue.length;
-                const setResult = kintone.mobile.app.record.set(record);
+                const setResult = platform.setRecord(record);
 
                 // 【調査用】追加した行の値が正しく反映されたか、再取得して確認する。
-                const reloaded = kintone.mobile.app.record.get();
+                const reloaded = platform.getRecord();
                 const reloadedTable = reloaded.record[target.tableField].value;
                 console.log('rowInput', rowInput);
                 console.log('newRow', newRow);
@@ -765,82 +798,95 @@
     // ==========================
     // イベント制御
     // イベント登録のみを行う(計算処理→API処理→UI処理の呼び出し)。
-    // 本カスタマイズはモバイル専用のため、kintone.mobile.*のイベントのみを登録する。
+    // PC用・モバイル用の両方のイベントを登録する(`handwriting-input`と同じ方式)。
     // ==========================
 
     /**
      * レコード追加・編集画面の表示時、METER_TARGETSの各対象についてスペース要素へ
-     * 「メーターを読み取って追加」ボタンを設置する。
+     * 「メーターを読み取って追加」ボタンを設置する(PC・モバイル共通)。
      *
      * 【重要】スペースフィールドはテーブルの内部には配置できないため、ボタンは
      * テーブルの直前に配置したスペースフィールド(getSpaceElement)に設置する。
-     * @param {Object} event
-     * @returns {Object} event
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
+     * @returns {Function} kintone.events.on()に渡すハンドラー
      */
-    function attachMeterButtons(event) {
-        METER_TARGETS.forEach((target) => {
-            const spaceElm = kintone.mobile.app.record.getSpaceElement(target.spaceId);
-            if (!spaceElm) {
-                console.warn(`${MSGS.SPACE_NOT_FOUND}: spaceId=${target.spaceId}`);
-                return;
-            }
-            if (spaceElm.querySelector(`.${BUTTON_CLASS}`)) {
-                return;
-            }
+    function createShowHandler(platform) {
+        return (event) => {
+            METER_TARGETS.forEach((target) => {
+                const spaceElm = platform.getSpaceElement(target.spaceId);
+                if (!spaceElm) {
+                    console.warn(`${MSGS.SPACE_NOT_FOUND}: spaceId=${target.spaceId}`);
+                    return;
+                }
+                if (spaceElm.querySelector(`.${BUTTON_CLASS}`)) {
+                    return;
+                }
 
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `${BUTTON_CLASS} kintoneplugin-button-normal`;
-            button.textContent =
-                UI.BUTTON_LABEL_PREFIX + target.label + UI.BUTTON_LABEL_SUFFIX;
-            button.addEventListener('click', () => openMeterOverlay(target));
-            spaceElm.appendChild(button);
-        });
-        return event;
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `${BUTTON_CLASS} kintoneplugin-button-normal`;
+                button.textContent =
+                    UI.BUTTON_LABEL_PREFIX + target.label + UI.BUTTON_LABEL_SUFFIX;
+                button.addEventListener('click', () =>
+                    openMeterOverlay(target, platform),
+                );
+                spaceElm.appendChild(button);
+            });
+            return event;
+        };
     }
 
     /**
      * レコード保存成功後、保留中の添付ファイル(pendingAttachments)があれば
      * REST APIでまとめて反映する。submit.successはPromiseに対応しているため、
      * asyncハンドラーをそのまま返せる。
-     * @param {Object} event
-     * @returns {Promise<Object>} event
+     * @param {Object} platform - PLATFORM.desktop または PLATFORM.mobile
+     * @returns {Function} kintone.events.on()に渡すハンドラー
      */
-    async function handleSubmitSuccess(event) {
-        if (pendingAttachments.length === 0 || !event.record) {
+    function createSubmitSuccessHandler(platform) {
+        return async (event) => {
+            if (pendingAttachments.length === 0 || !event.record) {
+                return event;
+            }
+
+            const pending = pendingAttachments.splice(0, pendingAttachments.length);
+
+            try {
+                const patch = buildMeterAttachmentPatch(pending, event.record);
+                await applyPendingAttachments(
+                    event.appId,
+                    event.recordId,
+                    event.record.$revision.value,
+                    patch,
+                );
+            } catch (error) {
+                console.error(error);
+                platform.notify(MSGS.ATTACHMENT_FAILED + '\n' + error.message, 'ERROR');
+            }
             return event;
-        }
-
-        const pending = pendingAttachments.splice(0, pendingAttachments.length);
-
-        try {
-            const patch = buildMeterAttachmentPatch(pending, event.record);
-            await applyPendingAttachments(
-                event.appId,
-                event.recordId,
-                event.record.$revision.value,
-                patch,
-            );
-        } catch (error) {
-            console.error(error);
-            kintone.mobile.showNotification(
-                'ERROR',
-                MSGS.ATTACHMENT_FAILED + '\n' + error.message,
-            );
-        }
-        return event;
+        };
     }
 
+    // PC用・モバイル用のどちらの画面でも動くよう、両方のイベントを登録する
+    // (PC用・モバイル用は別々に読み込まれ、該当しない側のイベントは発火しない)。
+    kintone.events.on(
+        ['app.record.create.show', 'app.record.edit.show'],
+        createShowHandler(PLATFORM.desktop),
+    );
     kintone.events.on(
         ['mobile.app.record.create.show', 'mobile.app.record.edit.show'],
-        attachMeterButtons,
+        createShowHandler(PLATFORM.mobile),
+    );
+    kintone.events.on(
+        ['app.record.create.submit.success', 'app.record.edit.submit.success'],
+        createSubmitSuccessHandler(PLATFORM.desktop),
     );
     kintone.events.on(
         [
             'mobile.app.record.create.submit.success',
             'mobile.app.record.edit.submit.success',
         ],
-        handleSubmitSuccess,
+        createSubmitSuccessHandler(PLATFORM.mobile),
     );
 
     // Vitestからのテスト用に、計算処理の純粋関数とエラーメッセージ定数を

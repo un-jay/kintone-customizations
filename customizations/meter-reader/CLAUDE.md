@@ -59,16 +59,16 @@
 
 ## 動作フロー
 
-1. レコード追加・編集画面表示時(モバイルのみ。理由は後述「モバイル専用にした理由」参照)に、`METER_TARGETS`の各対象についてスペース要素へ「📷 メーターを読み取って追加」ボタンを設置する
+1. レコード追加・編集画面表示時(PC・モバイル両方。詳細は後述「PC・モバイル対応の方針」参照)に、`METER_TARGETS`の各対象についてスペース要素へ「📷 メーターを読み取って追加」ボタンを設置する
 2. ボタン押下 → 全画面オーバーレイ(独自UI)を表示する。メーター名(任意入力)の欄がある
 3. 写真を撮影または選択する。`<input type="file" accept="image/*" capture="environment">`を使用(`handwriting-input`と同じ理由により、撮影用・選択用を分けない)
 4. 撮影した写真をプレビュー表示し、アップロード前にクライアント側でリサイズする(長辺1600px・JPEG品質0.8。`handwriting-input`と同じ基準)
 5. 「数値を読み取る」ボタン → リサイズ後の画像をBase64化し、GAS Web AppへPOSTする
 6. GASがGemini APIを呼び出し、`{meterType, value, unit, confidence, rawLabel}`を返す。kintone側は結果を編集可能なフォーム(種類・数値・単位・AIのコメント)へ反映し、自信度をバッジで表示する。自信度が`medium`/`low`の場合は「目視でも数値を確認してください」という警告を表示する
 7. 作業者が内容を確認・修正できる(AIによる自動読み取りは完全ではないため、確認前提の「下書き自動作成」という位置付け。`handwriting-input`と同じ考え方)
-8. 「この内容を追加する」ボタン → 写真をkintoneのファイルアップロードAPI(`/k/v1/file.json`)へアップロードしてfileKeyを取得し、`METER_TARGETS`で指定したテーブルの末尾へ1行追加する(`kintone.mobile.app.record.set()`。ただし添付ファイル欄は空のまま)。fileKeyと追加した行のインデックスを`pendingAttachments`に保持しておく
+8. 「この内容を追加する」ボタン → 写真をkintoneのファイルアップロードAPI(`/k/v1/file.json`)へアップロードしてfileKeyを取得し、`METER_TARGETS`で指定したテーブルの末尾へ1行追加する(`platform.setRecord()`。ただし添付ファイル欄は空のまま)。fileKeyと追加した行のインデックスを`pendingAttachments`に保持しておく
 9. オーバーレイを閉じ、成功通知を表示する。同じボタンを再度押せば、同じレコードに2台目・3台目のメーターを追加できる
-10. 作業者がkintone本来の「保存」ボタンを押し、レコード保存が成功すると発火する`mobile.app.record.create.submit.success`/`mobile.app.record.edit.submit.success`イベントで、保持しておいた各行のfileKeyをREST API(`kintone.api()`のPUT)によりテーブルの添付ファイル欄へ反映する
+10. 作業者がkintone本来の「保存」ボタンを押し、レコード保存が成功すると発火する`app.record.create.submit.success`/`app.record.edit.submit.success`(PC)・`mobile.app.record.create.submit.success`/`mobile.app.record.edit.submit.success`(モバイル)イベントで、保持しておいた各行のfileKeyをREST API(`kintone.api()`のPUT)によりテーブルの添付ファイル欄へ反映する
 
 ### なぜ「追加する」の時点で添付ファイルを直接セットしないのか(重要)
 
@@ -86,14 +86,15 @@
 
 **既知の制約**: この処理は、「読み取って追加」ボタンで追加した行がテーブルの末尾に、追加した順番のまま保存される前提(インデックスの一致)に依存している。作業者が保存前にkintone標準のテーブル操作(行の並べ替え・削除)を手動で行った場合、写真が意図しない行に反映される可能性がある。運用上は「読み取って追加のみを使い、手動での並べ替えはしない」ことを前提とする。
 
-## モバイル専用にした理由(重要)
+## PC・モバイル対応の方針(重要)
 
-本カスタマイズはPCでの利用を想定していない(現場の作業者がスマートフォン・タブレットで撮影する運用のみ)。そのため`handwriting-input`と異なり、**PC用の`kintone.app.record.*`イベント・API呼び出しを実装せず、`kintone.mobile.app.record.*`のみを実装する**(PLATFORM切り替えの抽象化を行わない。必要にならない抽象化を持ち込まない方針)。
+現場の作業者はスマートフォン・タブレットでの撮影を主な運用として想定しているが、PCからの画像アップロード(既存の写真ファイルを選んで読み取る運用)にも対応する。`mobile.js`/`mobile.css`を別に作らず、`handwriting-input`と同じ方式で、**`src/desktop.js`/`src/css/desktop.css`をPC用・モバイル用の両方にアップロードして共用する**(処理の大半が共通で、分けると二重管理になるため)。
 
-`src/desktop.js`というファイル名は、[ルートのCLAUDE.md](../../CLAUDE.md#カスタマイズプラグイン化しないもののフォルダ構成)で定めるカスタマイズの固定フォルダ構成に従うためであり、PC専用という意味ではない。**アップロード先は「モバイル用」のみでよい**(PC用へアップロードしても、`kintone.mobile`名前空間が無いPC画面ではイベントが発火せず実害は無いが、ボタンも表示されないため設定する意味がない)。
-
-- 全画面オーバーレイは`position: fixed`・`100dvh`(アドレスバー分で下が切れない)・セーフエリア(ノッチ・ホームバー)対応・入力欄`font-size: 16px`(iOS Safariの自動ズーム防止)を前提にモバイル専用でスタイリングする(PC幅向けのブレークポイントを持たない)
-- ファイルアップロード(`kintone.api.url('/k/v1/file.json', true)`・`kintone.getRequestToken()`・`kintone.api()`)・REST API呼び出しはモバイルでも通常と同じAPIを使う
+- PC用とモバイル用でkintone JS APIの名前空間だけが異なる(`kintone.app.record.*`/`kintone.showNotification`と`kintone.mobile.app.record.*`/`kintone.mobile.showNotification`、イベント名の`mobile.`接頭辞)。この差は`desktop.js`の`PLATFORM`オブジェクト(`desktop`/`mobile`)に集約し、ハンドラー生成関数(`createShowHandler`/`createSubmitSuccessHandler`)へ`platform`として渡す。**`kintone.mobile`はPC画面には存在しないため、`PLATFORM`の各関数は呼び出し時に評価する(トップレベルで参照しない)**
+- ファイルアップロード(`kintone.api.url('/k/v1/file.json', true)`・`kintone.getRequestToken()`・`kintone.api()`)・REST API呼び出しはPC・モバイルで同じAPIを使う
+- 全画面オーバーレイは`position: fixed`の全画面表示。PC幅ではボタンを適度な幅の据え置きにし、スマホ幅(600px以下)では`100dvh`(アドレスバー分で下が切れない)・セーフエリア(ノッチ・ホームバー)対応・ボタンの全幅化・入力欄`font-size: 16px`(iOS Safariの自動ズーム防止)をメディアクエリで適用する
+- モバイル用のレコード画面にも、PCと同じスペースフィールド(`METER_TARGETS`の`spaceId`)が表示される。スペースフィールドはフォームの設定で、PC・モバイル共通
+- **アップロード先は「PC用」「モバイル用」の両方に、同じ`src/desktop.js`・`src/css/desktop.css`をアップロードする**(片方だけにアップロードすると、そちらの画面でしかボタンが表示されない)
 
 ## GAS Web Appとの通信(CORS注意)
 

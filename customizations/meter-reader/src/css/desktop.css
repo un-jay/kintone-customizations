@@ -1,19 +1,21 @@
 /* ======================================================================
     Version    作成日(更新日)    更新者          :更新内容
     V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+    V1.1.0     2026/09/29        J.Yamamoto      :PC対応を追加。PC用はボタンを
+                                                  適度な幅の据え置きにし、
+                                                  スマホ幅(600px以下)向けの
+                                                  全幅ボタン等はメディアクエリへ分離
    ----------------------------------------------------------------------
         ModuleName  : メインスタイル(desktop.css)
-        Description : メーター読み取りオーバーレイのスタイル。モバイル専用
-                      (スマートフォン・タブレット)での操作を前提とし、
-                      ボタン・文字を大きめにしている。PC向けのブレークポイントは
-                      持たない(CLAUDE.mdの「モバイル専用にした理由」を参照)。
+        Description : メーター読み取りオーバーレイのスタイル。PC・モバイル両方の
+                      「JavaScript / CSSでカスタマイズ」に同じファイルをアップロード
+                      して共用する(`handwriting-input`と同じ方式)。
    ====================================================================== */
 
 .meter-reader-trigger-button {
-    display: block;
-    width: 100%;
+    display: inline-block;
     margin: 4px 0;
-    padding: 14px 16px;
+    padding: 10px 16px;
     font-size: 15px;
     font-weight: bold;
     color: #fff;
@@ -174,13 +176,9 @@
     border-top: 1px solid #ddd;
 }
 
-.meter-reader-footer > button {
-    flex: 1;
-}
-
 .meter-reader-primary-button,
 .meter-reader-secondary-button {
-    min-height: 48px;
+    min-width: 140px;
     padding: 14px 20px;
     font-size: 16px;
     font-weight: bold;
@@ -189,7 +187,6 @@
 }
 
 .meter-reader-primary-button {
-    width: 100%;
     color: #fff;
     background-color: #2e8b57;
     border: none;
@@ -239,5 +236,27 @@
 @keyframes meter-reader-spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+/* スマホ幅: ボタンを押しやすい幅・高さにする */
+@media (max-width: 600px) {
+    .meter-reader-primary-button,
+    .meter-reader-secondary-button {
+        min-width: 0;
+        min-height: 48px;
+    }
+
+    .meter-reader-body > .meter-reader-primary-button {
+        width: 100%;
+    }
+
+    .meter-reader-footer > button {
+        flex: 1;
+    }
+
+    .meter-reader-trigger-button {
+        width: 100%;
+        padding: 14px 16px;
     }
 }
