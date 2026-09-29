@@ -1,6 +1,8 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/28        J.Yamamoto      :新規作成
+//  V1.1.0     2026/09/29        J.Yamamoto      :isBlankPlaceholderRow・
+//                                                appendMeterTableRowのテストを追加
 // ----------------------------------------------------------------------
 //     ModuleName  : desktop.jsのユニットテスト(desktop.test.js)
 //     Description : 「計算処理」セクションの純粋関数を検証する。
@@ -202,6 +204,99 @@ describe('buildMeterTableRow', () => {
     it('添付ファイル欄は省略せず、空配列のキーとして含める(省略すると行ごと無視されるため)', () => {
         const row = calc.buildMeterTableRow(fields, {});
         expect(row.value.METER_PHOTO).toEqual({ type: 'FILE', value: [] });
+    });
+});
+
+describe('isBlankPlaceholderRow', () => {
+    const fields = {
+        name: 'METER_NAME',
+        type: 'METER_TYPE',
+        value: 'METER_VALUE',
+        unit: 'METER_UNIT',
+        confidence: 'METER_CONFIDENCE',
+        note: 'METER_NOTE',
+        photo: 'METER_PHOTO',
+    };
+
+    it('全サブフィールドが未入力の行はtrueを返す', () => {
+        const row = calc.buildMeterTableRow(fields, {});
+        expect(calc.isBlankPlaceholderRow(row, fields)).toBe(true);
+    });
+
+    it('いずれか1つでも値が入っている行はfalseを返す', () => {
+        const row = calc.buildMeterTableRow(fields, { name: '1号ボイラー圧力計' });
+        expect(calc.isBlankPlaceholderRow(row, fields)).toBe(false);
+    });
+
+    it('添付ファイルだけ入っている行はfalseを返す', () => {
+        const row = calc.buildMeterTableRow(fields, {});
+        row.value.METER_PHOTO.value = [{ fileKey: 'key-1' }];
+        expect(calc.isBlankPlaceholderRow(row, fields)).toBe(false);
+    });
+
+    it('rowやrow.valueが無い場合はfalseを返す', () => {
+        expect(calc.isBlankPlaceholderRow(null, fields)).toBe(false);
+        expect(calc.isBlankPlaceholderRow({}, fields)).toBe(false);
+    });
+});
+
+describe('appendMeterTableRow', () => {
+    const fields = {
+        name: 'METER_NAME',
+        type: 'METER_TYPE',
+        value: 'METER_VALUE',
+        unit: 'METER_UNIT',
+        confidence: 'METER_CONFIDENCE',
+        note: 'METER_NOTE',
+        photo: 'METER_PHOTO',
+    };
+    const input = {
+        name: '1号ボイラー圧力計',
+        meterTypeLabel: 'アナログ',
+        value: 6.4,
+        unit: 'MPa',
+        confidenceLabel: '高',
+        note: '目盛り0〜10、指針は6と7の間',
+    };
+
+    it('レコード追加画面を開いた直後の未入力の1行のみの場合、その行を置き換える(0行目)', () => {
+        const placeholderRow = calc.buildMeterTableRow(fields, {});
+        const { rows, rowIndex } = calc.appendMeterTableRow(
+            [placeholderRow],
+            fields,
+            input,
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].value.METER_NAME.value).toBe('1号ボイラー圧力計');
+        expect(rowIndex).toBe(0);
+    });
+
+    it('既に入力済みの行がある場合は末尾へ追加する', () => {
+        const existingRow = calc.buildMeterTableRow(fields, {
+            name: '2号ボイラー圧力計',
+        });
+        const { rows, rowIndex } = calc.appendMeterTableRow([existingRow], fields, input);
+        expect(rows).toHaveLength(2);
+        expect(rows[0].value.METER_NAME.value).toBe('2号ボイラー圧力計');
+        expect(rows[1].value.METER_NAME.value).toBe('1号ボイラー圧力計');
+        expect(rowIndex).toBe(1);
+    });
+
+    it('行が無い場合(0行)は末尾(0行目)へ追加する', () => {
+        const { rows, rowIndex } = calc.appendMeterTableRow([], fields, input);
+        expect(rows).toHaveLength(1);
+        expect(rowIndex).toBe(0);
+    });
+
+    it('未入力の行が複数ある場合は置き換えず末尾へ追加する(1行のみの場合だけ置き換える)', () => {
+        const placeholderRow = calc.buildMeterTableRow(fields, {});
+        const { rows, rowIndex } = calc.appendMeterTableRow(
+            [placeholderRow, calc.buildMeterTableRow(fields, {})],
+            fields,
+            input,
+        );
+        expect(rows).toHaveLength(3);
+        expect(rowIndex).toBe(2);
     });
 });
 

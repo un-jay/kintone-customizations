@@ -13,6 +13,13 @@
 //  V1.4.0     2026/09/29        J.Yamamoto      :PC対応を追加(handwriting-inputと同じ
 //                                                PLATFORM切り替え方式で、PC・モバイル
 //                                                両方のイベント・APIに対応)
+//  V1.5.0     2026/09/29        J.Yamamoto      :実機確認で判明した「レコード追加・編集
+//                                                画面を開いた直後の未入力の1行が残ったまま
+//                                                行を追加してしまう」不具合を修正
+//                                                (appendMeterTableRowで、未入力の1行のみの
+//                                                場合はその行を置き換えるようにした)。
+//                                                あわせて調査用の一時ログ・エラー表示の
+//                                                スタックトレース表示を通常の表示へ戻した
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
 //     Description : アナログ針メーター・デジタル表示メーターを撮影し、GAS Web App
@@ -258,6 +265,58 @@
                 [fields.photo]: { type: 'FILE', value: [] },
             },
         };
+    }
+
+    /**
+     * テーブルの1行が、レコード追加・編集画面を開いた直後にkintoneが自動生成する
+     * 「未入力の1行」(ユーザーが一度も編集していない空の行)かどうかを判定する。
+     * 【実機確認で判明】テーブルフィールドは、レコードの新規作成・編集画面を開いた
+     * 時点で、実際の保存データが0行であっても、常に未入力の1行が表示される仕様。
+     * これを考慮せずに新規行をpushすると、この空行が残ったまま追加行が並び、
+     * 「1行目が空、2行目に読み取り結果」という意図しない2行になってしまう。
+     * @param {Object} row    - テーブルのvalue配列の1要素({value: {...}})
+     * @param {Object} fields - METER_TARGETSの1要素のfields
+     * @returns {boolean}
+     */
+    function isBlankPlaceholderRow(row, fields) {
+        if (!row || !row.value) {
+            return false;
+        }
+        const rowValue = row.value;
+        const isEmptyText = (fieldCode) =>
+            !rowValue[fieldCode] || !rowValue[fieldCode].value;
+        const isEmptyFile = (fieldCode) =>
+            !rowValue[fieldCode] ||
+            !rowValue[fieldCode].value ||
+            rowValue[fieldCode].value.length === 0;
+
+        return (
+            isEmptyText(fields.name) &&
+            isEmptyText(fields.type) &&
+            isEmptyText(fields.value) &&
+            isEmptyText(fields.unit) &&
+            isEmptyText(fields.confidence) &&
+            isEmptyText(fields.note) &&
+            isEmptyFile(fields.photo)
+        );
+    }
+
+    /**
+     * テーブルへ読み取り結果の1行を追加した、新しいvalue配列と追加した行のインデックスを返す。
+     * 既存のテーブルが「未入力の1行のみ」(isBlankPlaceholderRow参照)の場合は、
+     * その空行を追加行で置き換える(pushすると空行+追加行の2行になってしまうため)。
+     * それ以外(既に何か入力されている・複数行ある)の場合は末尾へ追加する。
+     * @param {Array<Object>} tableValue - 追加前のテーブルのvalue配列
+     * @param {Object} fields            - METER_TARGETSの1要素のfields
+     * @param {Object} input             - buildMeterTableRowへ渡す入力値
+     * @returns {{rows: Array<Object>, rowIndex: number}}
+     */
+    function appendMeterTableRow(tableValue, fields, input) {
+        const newRow = buildMeterTableRow(fields, input);
+        if (tableValue.length === 1 && isBlankPlaceholderRow(tableValue[0], fields)) {
+            return { rows: [newRow], rowIndex: 0 };
+        }
+        return { rows: [...tableValue, newRow], rowIndex: tableValue.length };
     }
 
     /**
@@ -752,8 +811,6 @@
 
                 const record = platform.getRecord();
                 const tableValue = record.record[target.tableField].value;
-                const rowIndex = tableValue.length;
-                const beforeLength = tableValue.length;
                 const rowInput = {
                     name: ui.nameInput.value,
                     meterTypeLabel: ui.typeSelect.value,
@@ -762,17 +819,13 @@
                     confidenceLabel: confidenceToLabel(currentConfidence),
                     note: ui.noteTextarea.value,
                 };
-                const newRow = buildMeterTableRow(target.fields, rowInput);
-                tableValue.push(newRow);
-                const afterPushLength = tableValue.length;
-                const setResult = platform.setRecord(record);
-
-                // 【調査用】追加した行の値が正しく反映されたか、再取得して確認する。
-                const reloaded = platform.getRecord();
-                const reloadedTable = reloaded.record[target.tableField].value;
-                console.log('rowInput', rowInput);
-                console.log('newRow', newRow);
-                console.log('reloadedTable', reloadedTable);
+                const { rows, rowIndex } = appendMeterTableRow(
+                    tableValue,
+                    target.fields,
+                    rowInput,
+                );
+                record.record[target.tableField].value = rows;
+                platform.setRecord(record);
 
                 pendingAttachments.push({
                     tableField: target.tableField,
@@ -783,12 +836,12 @@
 
                 close();
                 notify(
-                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。\n[調査用]追加前の行数=${beforeLength}、push後の行数=${afterPushLength}\n[調査用]set()の戻り値=${JSON.stringify(setResult)}\n[調査用]再取得した行数=${reloadedTable.length}\n[調査用]再取得した中身=${JSON.stringify(reloadedTable)}`,
+                    `「${target.label}」の読み取り結果を一覧に追加しました。写真は保存後に反映されます。`,
                     'SUCCESS',
                 );
             } catch (error) {
                 console.error(error);
-                showError(MSGS.APPLY_FAILED + '\n' + (error.stack || error.message));
+                showError(MSGS.APPLY_FAILED + '\n' + error.message);
             } finally {
                 ui.applyButton.disabled = false;
             }
@@ -902,6 +955,8 @@
             shouldWarnLowConfidence,
             normalizeNumberInputValue,
             buildMeterTableRow,
+            isBlankPlaceholderRow,
+            appendMeterTableRow,
             buildMeterAttachmentPatch,
             MSGS,
         };
