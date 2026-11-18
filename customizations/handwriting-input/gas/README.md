@@ -1,27 +1,27 @@
 # handwriting-input (GAS側)
 
-handwriting-input kintoneカスタマイズと組み合わせて使う、Google Apps Script（GAS）側の実装です。**Web Appとして公開**し、kintone側の`desktop.js`から呼び出される中継役に専念します。Azure AI Vision（Image Analysis 4.0のRead機能）を呼び出して、画像内の手書き文字を認識し、テキストとして返します。
+handwriting-input kintoneカスタマイズと組み合わせて使う、Google Apps Script（GAS）側の実装です。**Web Appとして公開**し、kintone側の`desktop.js`から呼び出される中継役に専念します。Google Gemini API（マルチモーダルAI）を呼び出して、画像内の手書き文字を書き起こし、テキストとして返します（方式の経緯は[../CLAUDE.md](../CLAUDE.md)参照）。
 
 ## reminder-notifyのGASとの違い（重要）
 
 reminder-notifyのGASは、リマインドメールの送信元を顧客自身のアドレスにする必要があったため、**顧客のGoogleアカウント上に**個別に作成する構成でした。
 
-本カスタマイズのGAS Web Appは、Azure APIキーを安全に中継するだけのステートレスな処理で、送信元アカウントのような制約がありません。そのため、**開発側（納品元）のGoogleアカウント上に1つだけ作成し、複数の顧客・複数のkintone環境から共通で呼び出せます**。顧客側はAzure/GASの存在を意識する必要がありません。
+本カスタマイズのGAS Web Appは、Gemini APIキーを安全に中継するだけのステートレスな処理で、送信元アカウントのような制約がありません。そのため、**開発側（納品元）のGoogleアカウント上に1つだけ作成し、複数の顧客・複数のkintone環境から共通で呼び出せます**。顧客側はGemini/GASの存在を意識する必要がありません。
 
 ## 構成
 
-| ファイル                | 責務                                                                  |
-| ----------------------- | --------------------------------------------------------------------- |
-| `src/Config.js`         | スクリプトプロパティからの機密情報読み込み                            |
-| `src/AzureOcrClient.js` | Azure AI Vision（Read機能）の呼び出し、レスポンスからのテキスト抽出   |
-| `src/Main.js`           | Web Appのエントリポイント（`doPost`）。認証・エラーハンドリングを担当 |
+| ファイル                 | 責務                                                                        |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `src/Config.js`          | スクリプトプロパティからの機密情報読み込み                                  |
+| `src/GeminiOcrClient.js` | Gemini APIの呼び出し（503/429は自動リトライ）、レスポンスからのテキスト抽出 |
+| `src/Main.js`            | Web Appのエントリポイント（`doPost`）。認証・エラーハンドリングを担当       |
 
 ## 処理の流れ
 
 1. kintone側`desktop.js`が、撮影・リサイズした画像をBase64化し、共有シークレットと一緒にこのWeb AppへPOSTする（`Content-Type: text/plain`。理由は後述）
 2. `doPost`が共有シークレットを検証し、一致しなければ`{ok: false, error: "認証に失敗しました。"}`を返す
-3. 画像をデコードし、Azure AI Vision（Image Analysis 4.0、`features=read&language=ja`）へ送信する
-4. Azureのレスポンス（`readResult.blocks[].lines[].text`）から行のテキストを取り出し、`{ok: true, text: "..."}`として返す
+3. 画像サイズを確認し、Gemini API（`generateContent`、画像＋書き起こし用プロンプト、構造化JSON出力）へ送信する。503/429が返った場合は数秒空けて最大3回まで自動リトライする
+4. Geminiのレスポンス（`candidates[0].content.parts[].text`内のJSON `{"text": "..."}`）からテキストを取り出し、`{ok: true, text: "..."}`として返す
 5. 途中で例外が発生した場合は、実行ログへ記録したうえで`{ok: false, error: "..."}`を返す（kintone側でエラー内容がそのまま通知される）
 
 ## CORSについて（重要）
@@ -34,11 +34,11 @@ GAS Web Appは`doPost`のリクエストに対するOPTIONSプリフライトを
 
 ## セットアップ手順
 
-### 1. Azure AI Visionリソースの作成
+### 1. Gemini APIキーの発行
 
-1. [Azure Portal](https://portal.azure.com/#create/Microsoft.CognitiveServicesComputerVision)で「Computer Vision」リソースを作成する
-2. **価格レベルはF0（無料）を選択する**（5,000件/月まで無料。超過するとエラーになるだけで自動課金されない。詳細は[../CLAUDE.md](../CLAUDE.md)参照）
-3. 作成後、リソースの「キーとエンドポイント」から、キー（`AZURE_VISION_KEY`）とエンドポイント（`AZURE_VISION_ENDPOINT`。例: `https://xxxxx.cognitiveservices.azure.com`）を控える
+1. [Google AI Studio](https://aistudio.google.com/)にGoogleアカウントでログインし、APIキーを発行する（Cloud課金アカウントの紐付け・カード登録は不要）
+2. 発行したキーを控える（`GEMINI_API_KEY`。他人に共有しない。`meter-reader`と同じキーを使い回してもよい）
+3. 無料枠を超えるとエラーになるだけで自動課金されない（課金アカウントを紐付けない限り）。具体的な枠の数値はモデル・時期により変動するため、Google AI Studioで確認すること。混雑時は503/429エラーが出ることがある（詳細は[../CLAUDE.md](../CLAUDE.md)参照）
 
 ### 2. Apps Scriptプロジェクトの作成
 
@@ -55,11 +55,11 @@ npx clasp create --type webapp --title "handwriting-input" --rootDir ./src
 
 Apps Scriptエディタの「プロジェクトの設定」→「スクリプト プロパティ」で、以下を設定します。
 
-| プロパティ名            | 説明                                                                                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------- |
-| `AZURE_VISION_ENDPOINT` | 手順1で控えたエンドポイント（末尾にスラッシュを付けない）                                      |
-| `AZURE_VISION_KEY`      | 手順1で控えたキー                                                                              |
-| `SHARED_SECRET`         | kintone側`desktop.js`の`GAS_SHARED_SECRET`と同じ値にする任意の文字列（ランダムな文字列を推奨） |
+| プロパティ名     | 説明                                                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY` | 手順1で控えたAPIキー                                                                                                                    |
+| `GEMINI_MODEL`   | （任意）使用するモデル名。未設定なら`gemini-flash-latest`。混雑でエラーが続く場合は`gemini-flash-lite-latest`等へ変更（再デプロイ不要） |
+| `SHARED_SECRET`  | kintone側`desktop.js`の`GAS_SHARED_SECRET`と同じ値にする任意の文字列（ランダムな文字列を推奨）                                          |
 
 ### 4. コードをプッシュしてデプロイ
 
@@ -101,6 +101,8 @@ curl -X POST '<デプロイURL>' \
 
 ## 既知の制約
 
-- Azure AI Vision（F0無料枠）は5,000件/月・20件/分まで。超過すると`429`エラーになり、`doPost`が`{ok: false, error: "..."}`を返す（自動課金はされない）
-- Google Apps Scriptの1回の実行時間上限は6分。Azureの応答が極端に遅い場合はタイムアウトする可能性がある（通常のRead機能は数秒で応答するため、現実的には問題になりにくい）
+- Gemini APIの無料枠には上限がある。超過・混雑時は`429`/`503`エラーになり（数回自動リトライ後）、`doPost`が`{ok: false, error: "..."}`を返す（自動課金はされない）。時間をおいて再実行すると成功することがある
+- Gemini APIのモデル名はGoogle側の都合で廃止・変更されることがある。`models/…は提供終了`等のエラーが出たら、エラーメッセージが案内する新しいモデル名（または`-latest`エイリアス）を`GEMINI_MODEL`に設定する
+- 手書き日本語・罫線入りの帳票の認識精度は、実機での十分な検証ができていない。導入前に実際のサンプルで確認すること
+- Google Apps Scriptの1回の実行時間上限は6分。リトライが重なる等でGeminiの応答が極端に遅い場合はタイムアウトする可能性がある
 - Web AppのURLは`ANYONE_ANONYMOUS`（認証不要）で公開されるため、URLと共有シークレットの組み合わせが漏れると第三者に無料枠を消費される可能性がある。共有シークレットは推測されにくいランダムな文字列にすること

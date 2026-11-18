@@ -2,7 +2,7 @@
     "name": "@kintone-customizations/handwriting-input-gas",
     "version": "1.0.0",
     "private": true,
-    "description": "handwriting-inputカスタマイズのGAS側(Azure AI Visionへの中継Web App)",
+    "description": "handwriting-inputカスタマイズのGAS側(Gemini APIへの中継Web App)",
     "license": "MIT",
     "author": "J.Yamamoto",
     "scripts": {
