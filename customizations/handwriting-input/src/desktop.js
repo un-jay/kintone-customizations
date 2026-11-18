@@ -30,7 +30,7 @@
 //                                                使い分けられるよう、ファイル入力を2つに分けた
 // ----------------------------------------------------------------------
 //     ModuleName  : メイン処理(desktop.js)
-//     Description : 紙の手書きメモを撮影し、GAS Web App経由でAzure AI Vision(Read機能)
+//     Description : 紙の手書きメモを撮影し、GAS Web App経由でGemini API
 //                   により文字起こしして、指定フィールドへ書き込むカスタマイズ。
 //                   対象アプリはHANDWRITING_TARGETSに定義したフィールドコード・
 //                   スペース要素IDで作成されている前提。詳細はCLAUDE.mdを参照。
@@ -78,6 +78,9 @@
     /** リサイズ後のJPEG品質(0〜1) */
     const RESIZE_JPEG_QUALITY = 0.8;
 
+    /** 文字認識(GAS経由のGemini呼び出し)を待つ上限時間(ミリ秒)。超えたらエラー表示にする */
+    const OCR_TIMEOUT_MS = 60 * 1000;
+
     const BUTTON_CLASS = 'handwriting-input-trigger-button';
 
     const UI = {
@@ -97,6 +100,8 @@
     const MSGS = {
         NO_PHOTO: '写真を撮影または選択してください。',
         RECOGNIZE_FAILED: '文字の認識に失敗しました。',
+        RECOGNIZE_TIMEOUT:
+            '60秒以内に応答がありませんでした。Gemini APIが混雑している可能性があります。しばらく待ってからもう一度お試しください。',
         NOT_CONFIGURED:
             'GAS Web AppのURLまたは共有シークレットが未設定です。desktop.jsの GAS_WEB_APP_URL / GAS_SHARED_SECRET を実際の値に書き換えて、アップロードし直してください。',
         APPLY_FAILED: '反映に失敗しました。',
@@ -216,7 +221,7 @@
 
     /**
      * 画像ファイルをcanvasで読み込み、長辺RESIZE_MAX_DIMENSION以下・JPEGへリサイズする。
-     * 現場のネットワークが遅い前提で、送信量とAzureへのペイロードサイズを抑えるため。
+     * 現場のネットワークが遅い前提で、送信量とGeminiへのペイロードサイズを抑えるため。
      * @param {File} file
      * @returns {Promise<{blob: Blob, dataUrl: string}>}
      */
@@ -290,16 +295,29 @@
         ) {
             throw new Error(MSGS.NOT_CONFIGURED);
         }
-        const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({
-                sharedSecret: GAS_SHARED_SECRET,
-                imageBase64: base64Image,
-            }),
-        });
-        const responseText = await response.text();
-        return parseOcrResponse(responseText);
+        // 応答が返らないまま「認識しています」が出続けないよう、一定時間でタイムアウトさせる
+        const controller = new AbortController();
+        const timerId = setTimeout(() => controller.abort(), OCR_TIMEOUT_MS);
+        try {
+            const response = await fetch(GAS_WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    sharedSecret: GAS_SHARED_SECRET,
+                    imageBase64: base64Image,
+                }),
+                signal: controller.signal,
+            });
+            const responseText = await response.text();
+            return parseOcrResponse(responseText);
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(MSGS.RECOGNIZE_TIMEOUT);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timerId);
+        }
     }
 
     /**

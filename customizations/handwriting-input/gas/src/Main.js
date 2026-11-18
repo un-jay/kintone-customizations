@@ -1,18 +1,20 @@
 // ======================================================================
 //  Version    作成日(更新日)    更新者          :更新内容
 //  V1.0.0     2026/09/17        J.Yamamoto      :新規作成
+//  V1.1.0     2026/11/18        J.Yamamoto      :Gemini API呼び出しへ変更(画像サイズ上限を10MBへ変更)
 // ----------------------------------------------------------------------
 //     ModuleName  : エントリポイント(Main.js)
-//     Description : kintoneカスタマイズから呼び出されるWeb Appのエントリポイント。
-//                   Azure APIキーをブラウザ側に渡さず、GAS側で保持したまま
-//                   Azure AI Visionへ中継する(AzureOcrClient.jsに委譲)。
+//                   Gemini APIキーをブラウザ側に渡さず、GAS側で保持したまま
+//                   Gemini APIへ中継する(GeminiOcrClient.jsに委譲)。
 // ======================================================================
 
 'use strict';
 
-/** Azureへ送る画像の許容サイズ上限(バイト)。Azure自体の上限は20MBだが、
- * 明確なエラーメッセージを返すため、それより小さい値で早期にチェックする。 */
-const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+/** Geminiへ送る画像の許容サイズ上限(バイト)。リクエスト全体(Base64化で約1.33倍)が
+ * インライン送信の上限(20MB)に収まるよう、安全側に10MBとし、明確なエラーメッセージを
+ * 返すため早期にチェックする。【要確認】上限値はGemini API公式ドキュメントで確認すること。
+ * kintone側で長辺1600pxへ縮小してから送るため、通常はこの上限を大きく下回る。 */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /**
  * Web AppのPOSTエントリポイント。kintone側desktop.jsから呼び出される。
@@ -45,8 +47,7 @@ function doPost(e) {
             });
         }
 
-        const imageBlob = Utilities.newBlob(imageBytes, 'image/jpeg', 'handwriting.jpg');
-        const text = recognizeHandwriting(config, imageBlob);
+        const text = recognizeHandwriting(config, request.imageBase64);
         return jsonOutput({ ok: true, text });
     } catch (error) {
         Logger.log(

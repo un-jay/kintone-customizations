@@ -1,6 +1,6 @@
 # handwriting-input
 
-紙に手書きされたメモを撮影するだけで、文字を自動認識してkintoneのフィールドへ転記するkintoneカスタマイズ + GAS（Azure AI Visionへの中継Web App）です。
+紙に手書きされたメモを撮影するだけで、文字を自動認識してkintoneのフィールドへ転記するkintoneカスタマイズ + GAS（Gemini APIへの中継Web App）です。
 
 ## 背景
 
@@ -9,13 +9,13 @@
 ## 構成
 
 - `src/` — kintone側（JS/CSSカスタマイズとして対象アプリへ直接アップロードする。撮影UI・リサイズ・GAS呼び出し・kintoneへの反映）
-- `gas/` — Google Apps Script側（Azure AI Visionへの中継Web App）。セットアップ手順は [gas/README.md](./gas/README.md) を参照
+- `gas/` — Google Apps Script側（Gemini APIへの中継Web App）。セットアップ手順は [gas/README.md](./gas/README.md) を参照
 
 ## 特長
 
 - 写真を撮る（または選ぶ）→「文字にする」→ 内容を確認 → 「反映する」の4ステップだけで完結。非IT専門家でも直感的に使える
-- Azure AI Vision（Image Analysis 4.0のRead機能）による手書き日本語認識。無料枠（5,000件/月）を超えてもエラーになるだけで自動課金されない設計（詳細は[CLAUDE.md](./CLAUDE.md)参照）
-- AzureのAPIキーはGAS側にのみ保持し、ブラウザ側には一切渡さない
+- Google Gemini API（マルチモーダルAI）による手書き日本語認識。無料枠を超えてもエラーになるだけで自動課金されない設計（詳細は[CLAUDE.md](./CLAUDE.md)参照）。混雑時は503/429エラーが出ることがあり、自動リトライや時間をおいた再実行が必要な場合がある
+- Gemini APIキーはGAS側にのみ保持し、ブラウザ側には一切渡さない
 - 認識結果は編集可能なプレビューを経てから反映するため、OCRの誤認識をその場で修正できる（「下書き自動作成」という位置付け）
 - 撮影した写真の原本も添付ファイルとして自動保存されるため、後から見返せる（現物との突き合わせ・監査対応）
 - 1レコードに複数の手書き入力欄を設定可能（`HANDWRITING_TARGETS`配列で構成）
@@ -26,7 +26,7 @@
 
 1. **ブラウザ内蔵の無料OCR（Tesseract.js）は不採用**: マス目に区切って1文字ずつ認識させる方式を検証したが、単純な英字ですら誤認識し、空白のマスにも幻の文字を検出するなど、実用に耐えなかった
 2. **OS標準の手書き認識（Windows Ink/Scribble等）も不採用**: これは「タブレットに直接ペンで書く」方式向けの機能であり、「紙に書かれた既存のメモを読み取る」という本来の要求とは前提が異なる
-3. **Azure AI Vision（無料枠）を採用**: 手書き日本語に対応しており、無料枠を超えても自動課金されない安全な設計。登録の手間は増えるが、精度と安全な無料運用を両立できる唯一の現実的な選択肢だった
+3. **Google Gemini API（無料枠）を採用**: 手書き日本語に対応し、カード登録なしでAPIキーを発行できる。無料枠を超えてもエラーになるだけで自動課金されない設計。`meter-reader`と同じ方式のため、GASのコードも流用できる。ただし混雑時のエラーや、手書き帳票での認識精度は実機での検証が必要
 
 ## 処理の流れ
 
@@ -35,7 +35,7 @@ sequenceDiagram
     actor User as 作業者
     participant Kintone as kintone(レコード追加/編集画面)
     participant GAS as GAS Web App
-    participant Azure as Azure AI Vision
+    participant Gemini as Gemini API
 
     User->>Kintone: 「手書きメモを読み取る」ボタンをクリック
     Kintone-->>User: 撮影用オーバーレイを表示
@@ -43,8 +43,8 @@ sequenceDiagram
     Kintone->>Kintone: クライアント側でリサイズ(長辺1600px)
     User->>Kintone: 「文字にする」をクリック
     Kintone->>GAS: 画像(Base64)+共有シークレットをPOST
-    GAS->>Azure: 画像を送信(Read機能, language=ja)
-    Azure-->>GAS: 認識結果(行ごとのテキスト)
+    GAS->>Gemini: 画像とプロンプトを送信(構造化JSON出力)
+    Gemini-->>GAS: 書き起こしたテキスト
     GAS-->>Kintone: {ok: true, text: "..."}
     Kintone-->>User: 既存の内容に追記したプレビューを表示(編集可能)
     User->>Kintone: 内容を確認・修正し「反映する」をクリック
@@ -90,9 +90,9 @@ sequenceDiagram
 
 ## セットアップ
 
-### 1. GAS側（Azure中継Web App）
+### 1. GAS側（Gemini中継Web App）
 
-[gas/README.md](./gas/README.md) の手順に従い、Azureリソースの作成・GAS Web Appのデプロイを行ってください。**この手順は開発側（納品元）が一度だけ行うもので、顧客側の作業ではありません。**
+[gas/README.md](./gas/README.md) の手順に従い、Google AI StudioでのAPIキー発行・GAS Web Appのデプロイを行ってください。**この手順は開発側（納品元）が一度だけ行うもので、顧客側の作業ではありません。**
 
 ### 2. kintone側
 
@@ -116,8 +116,8 @@ const GAS_SHARED_SECRET = 'REPLACE_WITH_SHARED_SECRET';
 ## 動作確認済みの範囲・未検証の範囲（正直な現状）
 
 - モバイル対応（`kintone.mobile.*`の切り替え・ボタン設置・オーバーレイ表示・キャンセル時のスクロール固定解除）は、jsdomを使ったVitestでAPIの切り替えまで検証済み。**スマートフォンの実機（iOS Safari・Android Chrome）でのカメラ起動・アップロードは未確認**
-- `src/desktop.js`の純粋関数（文字列結合・画像サイズ計算・レスポンス解析・添付ファイル用recordパラメーター組み立て）と、`gas/src/AzureOcrClient.js`のレスポンス解析処理はVitestで単体テスト済み（`npm run test`）
-- **実機での動作確認済み**: Azureリソース作成・GAS Web Appのデプロイ・kintone実機での「撮影→文字にする→反映する→保存」の一連の流れを、実際の環境で確認済み。以下の不具合は実機テストで発見し、修正済み
+- `src/desktop.js`の純粋関数（文字列結合・画像サイズ計算・レスポンス解析・添付ファイル用recordパラメーター組み立て）と、`gas/src/GeminiOcrClient.js`のレスポンス解析・リトライ判定はVitestで単体テスト済み（`npm run test`）
+- **実機確認済み**: GAS Web Appのデプロイ・kintone実機での「撮影→文字にする→反映する→保存」の一連の流れを確認済み。以下の不具合は実機テストで発見し、修正済み
     - `kintone.app.record.set()`が添付ファイルフィールドを更新できない仕様だったため、写真が反映されない不具合（→ レコード保存成功後にREST APIで反映する方式へ修正。詳細は[CLAUDE.md](./CLAUDE.md)参照）
 - 実際の手書き文字（連続した筆記体等）での認識精度は、印刷された文字ほど検証できていません。導入前に、実際の顧客の手書きサンプルで認識精度を確認してください
 
